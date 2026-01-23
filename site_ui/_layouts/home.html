@@ -187,8 +187,10 @@
               return;
             }
             
+            const nextGame = events.find(e => e.competitions[0].status.type.state === 'pre');
+            
             const summaryUrl = ENDPOINTS[type].replace('scoreboard', 'summary') + '?event=' + lastGame.id;
-            return fetch(summaryUrl).then(r => r.json()).then(summary => renderGame(summary.header, summary));
+            return fetch(summaryUrl).then(r => r.json()).then(summary => renderGame(summary.header, summary, nextGame));
           });
       })
       .catch(err => {
@@ -197,7 +199,7 @@
       });
   }
 
-  function renderGame(event, summaryData) {
+  function renderGame(event, summaryData, nextGame) {
     const competition = event.competitions[0];
     const status = (event.status || competition.status).type.detail;
     const weather = event.weather || (summaryData && summaryData.gameInfo && summaryData.gameInfo.weather);
@@ -205,6 +207,17 @@
     // Identify Home and Away
     const ncState = competition.competitors.find(c => c.team.id == NC_STATE_ID);
     const opponent = competition.competitors.find(c => c.team.id != NC_STATE_ID);
+
+    let nextGameHtml = '';
+    if (nextGame) {
+      const date = new Date(nextGame.date);
+      const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      const nextOpponent = nextGame.competitions[0].competitors.find(c => c.team.id !== NC_STATE_ID);
+      const nextOpponentName = nextOpponent ? (nextOpponent.team.abbreviation || nextOpponent.team.shortDisplayName || nextOpponent.team.displayName) : 'TBD';
+      
+      nextGameHtml = `<div style="margin-top: 8px; font-size: 0.85em; color: #666;">Next: vs ${nextOpponentName} ${dateStr} ${timeStr}</div>`;
+    }
 
     const display = document.getElementById('game-display');
     
@@ -223,10 +236,7 @@
           <div class="team-score">${opponent.score}</div>
         </div>
       </div>
-      <div class="game-info">
-        ${competition.venue ? `📍 ${competition.venue.fullName}` : ''}
-        ${weather ? ` | 🌡️ ${weather.displayValue || weather.temperature + '&deg;'}` : ''}
-      </div>
+      ${nextGameHtml}
       <div id="stats-content">
         ${(summaryData && renderPlayerStats(summaryData)) || renderTeamStats(ncState, opponent)}
       </div>
