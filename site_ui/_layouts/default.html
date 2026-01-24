@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>CBB Fantasy - </title>
+    <title>{{ page.title }} - {{ site.title }}</title>
     <style>
         body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
         .site-header { background: #333; color: white; padding: 1rem; display: flex; justify-content: space-between; align-items: center; }
@@ -17,7 +17,7 @@
 </head>
 <body>
     <header class="site-header">
-        <a href="/" class="site-title"></a>
+        <a href="/" class="site-title">{{ site.title }}</a>
         <div id="user-dropdown" class="user-dropdown">
             <button id="username-display" class="username-btn" onclick="toggleDropdown()">User</button>
             <div id="dropdown-menu" class="dropdown-content">
@@ -26,21 +26,7 @@
         </div>
     </header>
     <div id="content">
-        <!DOCTYPE html>
-<html>
-<head>
-<script>
-  if (localStorage.getItem('isLoggedIn') === 'true') {
-    window.location.href = '/team';
-  } else {
-    window.location.href = '/login';
-  }
-</script>
-</head>
-<body>
-</body>
-</html>
-
+        {{ content }}
     </div>
     <script>
         if (localStorage.getItem('isLoggedIn') === 'true') {

@@ -1,0 +1,19 @@
+---
+layout: default
+title: CBB Fantasy
+permalink: /
+---
+<!DOCTYPE html>
+<html>
+<head>
+<script>
+  if (localStorage.getItem('isLoggedIn') === 'true') {
+    window.location.href = '/team';
+  } else {
+    window.location.href = '/login';
+  }
+</script>
+</head>
+<body>
+</body>
+</html>
