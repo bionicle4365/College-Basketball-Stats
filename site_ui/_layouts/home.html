@@ -115,6 +115,7 @@
       padding: 6px 4px;
       text-align: center;
       border-bottom: 1px solid #eee;
+      white-space: nowrap;
     }
     .stats-table th {
       background-color: #f9f9f9;
@@ -228,6 +229,11 @@
       nextGameHtml = `<div style="margin-top: 8px; font-size: 0.85em; color: #666;">Next: vs ${nextOpponentName} ${dateStr} ${timeStr}</div>`;
     }
 
+    const getRank = (c) => {
+      const rank = c.rank || c.curatedRank?.current;
+      return (rank && rank <= 25) ? `#${rank} ` : '';
+    };
+
     const display = document.getElementById('game-display');
     
     display.innerHTML = `
@@ -235,13 +241,13 @@
       <div class="score-board">
         <div class="team">
           <img src="${ncState.team.logo || (ncState.team.logos && ncState.team.logos[0].href)}" alt="${ncState.team.displayName}" class="team-logo">
-          <span class="team-name">${ncState.team.shortDisplayName || ncState.team.nickname || ncState.team.displayName}</span>
+          <span class="team-name">${getRank(ncState)}${ncState.team.shortDisplayName || ncState.team.nickname || ncState.team.displayName}</span>
           <div class="team-score">${ncState.score}</div>
         </div>
         <div class="vs">VS</div>
         <div class="team">
           <img src="${opponent.team.logo || (opponent.team.logos && opponent.team.logos[0].href)}" alt="${opponent.team.displayName}" class="team-logo">
-          <span class="team-name">${opponent.team.shortDisplayName || opponent.team.nickname || opponent.team.displayName}</span>
+          <span class="team-name">${getRank(opponent)}${opponent.team.shortDisplayName || opponent.team.nickname || opponent.team.displayName}</span>
           <div class="team-score">${opponent.score}</div>
         </div>
       </div>
