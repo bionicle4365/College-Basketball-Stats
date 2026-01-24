@@ -2,10 +2,13 @@
 <html>
 <head>
     <title>NC State Basketball Stats - </title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
     .stats-container {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       width: fit-content;
+      max-width: 100%;
+      box-sizing: border-box;
       margin: 0 auto;
       padding: 20px;
       border: 1px solid #e1e4e8;
@@ -43,7 +46,7 @@
       text-align: center;
     }
     .status {
-      font-size: 0.9em;
+      font-size: 1.0em;
       color: #666;
       margin-bottom: 15px;
       text-transform: uppercase;
@@ -75,13 +78,13 @@
     }
     .vs {
       color: #999;
-      font-size: 0.8em;
+      font-size: 0.9em;
       margin: 0 10px;
     }
     .game-info {
       border-top: 1px solid #eee;
       padding-top: 15px;
-      font-size: 0.9em;
+      font-size: 1.0em;
       color: #555;
     }
     .loading {
@@ -93,7 +96,7 @@
     }
     .leaders {
       margin-top: 10px;
-      font-size: 0.8em;
+      font-size: 0.9em;
       text-align: left;
       color: #555;
     }
@@ -106,7 +109,7 @@
       width: 100%;
       border-collapse: collapse;
       margin-top: 15px;
-      font-size: 0.8em;
+      font-size: 0.9em;
     }
     .stats-table th, .stats-table td {
       padding: 6px 4px;
@@ -117,6 +120,12 @@
       background-color: #f9f9f9;
       font-weight: bold;
       color: #555;
+    }
+    @media (max-width: 600px) {
+      .stats-container {
+        width: 100%;
+        padding: 10px;
+      }
     }
   </style>
 </head>
@@ -279,16 +288,18 @@
 
     return `
       <div class="section-title">Team Stats</div>
-      <table class="stats-table">
-        <thead>
-          <tr>
-            <th>${team1.team.abbreviation}</th>
-            <th>Stat</th>
-            <th>${team2.team.abbreviation}</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
+      <div style="overflow-x: auto;">
+        <table class="stats-table">
+          <thead>
+            <tr>
+              <th>${team1.team.abbreviation}</th>
+              <th>Stat</th>
+              <th>${team2.team.abbreviation}</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
     `;
   }
 
