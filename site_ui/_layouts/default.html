@@ -2,9 +2,10 @@
 <html>
 <head>
     <title>{{ page.title }} - {{ site.title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-        .site-header { background: #333; color: white; padding-left: 1rem; padding-right: 1rem; display: flex; justify-content: space-between; align-items: center; }
+        .site-header { background: #333; color: white; padding: 1rem; display: flex; justify-content: space-between; align-items: center; }
         .site-title { color: white; text-decoration: none; font-weight: bold; font-size: 1.2rem; }
         .user-dropdown { position: relative; display: none;}
         .username-btn { background: none; border: none; color: white; font-weight: bold; cursor: pointer; font-size: 1rem; padding: 0.5rem; display: flex; align-items: center; }
@@ -61,7 +62,7 @@
 </head>
 <body>
     <header class="site-header">
-        <div style="display: flex; align-items: center; padding-top: 1rem; padding-bottom: 1rem;">
+        <div style="display: flex; align-items: center;">
             <button class="mobile-menu-btn" onclick="toggleMobileMenu()">☰</button>
             <a href="/College-Basketball-Stats/" class="site-title" style="margin-right: 20px;">{{ site.title }}</a>
             <nav class="nav-links" id="nav-links">

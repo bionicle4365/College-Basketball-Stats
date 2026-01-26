@@ -3,9 +3,6 @@ layout: default
 title: Team Schedule
 permalink: /team/
 ---
-<!DOCTYPE html>
-<html>
-<head>
     <style>
         .schedule-container {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -40,8 +37,10 @@ permalink: /team/
         .win { color: green; font-weight: bold; }
         .loss { color: #cc0000; font-weight: bold; }
         .team-logo { width: 24px; height: 24px; vertical-align: middle; margin-right: 8px; }
+        #schedule-content {
+            overflow-x: auto;
+        }
     </style>
-</head>
 <body>
     <div class="schedule-container">
         <h2 id="team-name">Schedule</h2>
