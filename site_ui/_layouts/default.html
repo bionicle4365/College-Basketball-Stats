@@ -19,17 +19,52 @@
         .nav-links { display: flex; align-items: center; }
         .nav-links a { color: #ddd; text-decoration: none; margin-right: 15px; font-weight: 500; }
         .nav-links a:hover { color: white; }
+        .mobile-menu-btn { display: none; background: none; border: none; color: white; font-size: 1.5rem; cursor: pointer; margin-right: 10px; }
+
+        @media (max-width: 768px) {
+            .site-header { position: relative; }
+            .mobile-menu-btn { display: block; }
+            .nav-links {
+                display: none;
+                position: absolute;
+                top: 100%;
+                left: 0;
+                width: 100%;
+                background-color: #333;
+                flex-direction: column;
+                align-items: flex-start;
+                z-index: 1000;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            }
+            .nav-links.show { display: flex; }
+            .nav-links a { 
+                margin: 0; 
+                padding: 15px 20px; 
+                width: 100%; 
+                box-sizing: border-box; 
+                border-top: 1px solid #444; 
+            }
+            .league-dropdown { margin: 0; width: 100%; border-top: 1px solid #444; }
+            .league-btn { width: 100%; padding: 15px 20px; justify-content: flex-start; }
+            .league-dropdown .dropdown-content { position: static; width: 100%; box-shadow: none; background-color: #444; }
+            .league-dropdown .dropdown-content button { padding-left: 40px; color: #ddd; }
+        }
     </style>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
-    <script src="/College-Basketball-Stats/common.js"></script>
+    {% if jekyll.environment == "development" %}
+    <script src="{{ site.baseurl }}/common.local.js"></script>
+    {% else %}
+    <script src="{{ site.baseurl }}/common.js"></script>
+    {% endif %}
 </head>
 <body>
     <header class="site-header">
         <div style="display: flex; align-items: center; padding-top: 1rem; padding-bottom: 1rem;">
+            <button class="mobile-menu-btn" onclick="toggleMobileMenu()">☰</button>
             <a href="/College-Basketball-Stats/" class="site-title" style="margin-right: 20px;">{{ site.title }}</a>
-            <nav class="nav-links">
+            <nav class="nav-links" id="nav-links">
                 <div id="league-dropdown" class="league-dropdown">
                     <button id="league-display" class="league-btn" onclick="toggleDropdown('league-menu')">NCAA-M</button>
                     <div id="league-menu" class="dropdown-content" style="left: 0; right: auto;">
@@ -83,6 +118,10 @@
 
         function toggleDropdown(id) {
             document.getElementById(id).classList.toggle("show");
+        }
+
+        function toggleMobileMenu() {
+            document.getElementById('nav-links').classList.toggle('show');
         }
 
         function selectLeague(league) {
@@ -164,6 +203,12 @@
             if (!event.target.closest('#user-team-logo') && !event.target.closest('#team-selector')) {
                 const selector = document.getElementById('team-selector');
                 if (selector) selector.style.display = 'none';
+            }
+            if (!event.target.matches('.mobile-menu-btn') && !event.target.closest('.nav-links')) {
+                const nav = document.getElementById('nav-links');
+                if (nav && nav.classList.contains('show')) {
+                    nav.classList.remove('show');
+                }
             }
         }
         function logout() {
