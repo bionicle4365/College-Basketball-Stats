@@ -17,23 +17,7 @@ permalink: /settings/
     <div id="message" style="margin-top: 15px; padding: 10px; border-radius: 4px; display: none;"></div>
 </div>
 
-<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
 <script>
-    const firebaseConfig = {
-        apiKey: "AIzaSyABrOdAazMKC1W6KC0637QKRqJaLhYXYj4",
-        authDomain: "subtle-lambda-485402-j7.firebaseapp.com",
-        projectId: "subtle-lambda-485402-j7",
-        storageBucket: "subtle-lambda-485402-j7.firebasestorage.app",
-        messagingSenderId: "494315015081",
-        appId: "1:494315015081:web:d23e5b5532ff75553152b8",
-        measurementId: "G-DEZV030R84"
-    };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
-    const auth = firebase.auth();
-
     const teamsDropdown = document.getElementById('teams-dropdown');
     const teamInput = document.getElementById('team-select');
     let teamsData = [];
