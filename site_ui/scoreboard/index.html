@@ -1,0 +1,546 @@
+---
+layout: default
+title: Scoreboard
+permalink: /scoreboard/
+---
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ page.title }} - {{ site.title }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+    .stats-container {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      width: fit-content;
+      max-width: 100%;
+      box-sizing: border-box;
+      margin: 0 auto;
+      padding: 20px;
+      border: 1px solid #e1e4e8;
+      border-radius: 6px;
+      background-color: #f6f8fa;
+    }
+    .controls {
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    .btn-group {
+      display: inline-flex;
+      border: 1px solid #cc0000;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .btn-group button {
+      background-color: white;
+      border: none;
+      padding: 10px 20px;
+      cursor: pointer;
+      font-weight: bold;
+      color: #cc0000;
+      transition: background 0.2s;
+    }
+    .btn-group button.active {
+      background-color: #cc0000;
+      color: white;
+    }
+    .game-card {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    .status {
+      font-size: 1.0em;
+      color: #666;
+      margin-bottom: 15px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .score-board {
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .team {
+      flex: 1;
+    }
+    .team-logo {
+      width: 50px;
+      height: 50px;
+      margin-bottom: 10px;
+    }
+    .team-name {
+      font-weight: bold;
+      display: block;
+      margin-bottom: 5px;
+    }
+    .team-score {
+      font-size: 2.5em;
+      font-weight: bold;
+      color: #333;
+    }
+    .vs {
+      color: #999;
+      font-size: 0.9em;
+      margin: 0 10px;
+    }
+    .game-info {
+      border-top: 1px solid #eee;
+      padding-top: 15px;
+      font-size: 1.0em;
+      color: #555;
+    }
+    .loading {
+      color: #666;
+      font-style: italic;
+    }
+    .error {
+      color: #cc0000;
+    }
+    .leaders {
+      margin-top: 10px;
+      font-size: 0.9em;
+      text-align: left;
+      color: #555;
+    }
+    .leader-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 2px;
+    }
+    .stats-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+      font-size: 0.9em;
+    }
+    .stats-table th, .stats-table td {
+      padding: 6px 4px;
+      text-align: center;
+      border-bottom: 1px solid #eee;
+      white-space: nowrap;
+    }
+    .stats-table th {
+      background-color: #f9f9f9;
+      font-weight: bold;
+      color: #555;
+    }
+    .picked-row {
+      background-color: #e8f5e9;
+      border-left: 3px solid #28a745;
+    }
+    @media (max-width: 600px) {
+      .stats-container {
+        width: 100%;
+        padding: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="stats-container">
+  <div id="game-display" class="game-card">
+    <div class="loading">Loading stats...</div>
+  </div>
+</div>
+
+<script>
+  checkAuth();
+  const TEAM_ID = localStorage.getItem('favoriteTeamId') || '152'; // Default to NC State if not set
+  let USER_UID = null;
+
+  const ENDPOINTS = {
+    mens: 'https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard',
+    womens: 'https://site.api.espn.com/apis/site/v2/sports/basketball/womens-college-basketball/scoreboard'
+  };
+
+  function fetchPick(gameId, type) {
+      if (!USER_UID) return Promise.resolve(null);
+      const collectionName = `${TEAM_ID}${type === 'mens' ? 'm' : 'w'}`;
+      return db.collection(collectionName).doc(String(gameId)).get()
+          .then(doc => doc.exists ? doc.data()[USER_UID] : null)
+          .catch(() => null);
+  }
+
+  function savePick(gameId) {
+      const select = document.getElementById('player-pick-select');
+      const playerId = select.value;
+      const message = document.getElementById('pick-message');
+      
+      if (!playerId) {
+          message.textContent = "Please select a player.";
+          message.style.color = "red";
+          return;
+      }
+      
+      const league = localStorage.getItem('league') || 'mens';
+      const collectionName = `${TEAM_ID}${league === 'mens' ? 'm' : 'w'}`;
+      
+      db.collection(collectionName).doc(String(gameId)).set({
+          [USER_UID]: playerId
+      }, { merge: true })
+      .then(() => {
+          message.textContent = "Pick saved!";
+          message.style.color = "green";
+      })
+      .catch((error) => {
+          console.error("Error saving pick: ", error);
+          message.textContent = "Error saving pick.";
+          message.style.color = "red";
+      });
+  }
+
+  function loadStats(type) {
+    localStorage.setItem('league', type);
+    
+    const display = document.getElementById('game-display');
+    display.innerHTML = '<div class="loading">Fetching latest scores...</div>';
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const gameId = urlParams.get('gameId');
+
+    if (gameId) {
+        const summaryUrl = ENDPOINTS[type].replace('scoreboard', 'summary') + '?event=' + gameId;
+        fetch(summaryUrl).then(r => r.json()).then(summary => {
+            const state = summary.header.competitions[0].status.type.state;
+            const promises = [fetchPick(gameId, type)];
+            
+            if (state === 'pre') {
+                 const sportPath = type === 'mens' ? 'mens-college-basketball' : 'womens-college-basketball';
+                 promises.push(fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${sportPath}/teams/${TEAM_ID}?enable=roster`).then(r => r.json()));
+            } else {
+                 promises.push(Promise.resolve(null));
+            }
+
+            Promise.all(promises).then(([pickedPlayerId, rosterData]) => {
+                if (summary && summary.header) {
+                    renderGame(summary.header, summary, null, pickedPlayerId, rosterData);
+                } else {
+                    display.innerHTML = '<div class="error">Game data not available.</div>';
+                }
+            });
+        }).catch(err => {
+            console.error(err);
+            display.innerHTML = '<div class="error">Error loading game data.</div>';
+        });
+        return;
+    }
+
+    fetch(ENDPOINTS[type])
+      .then(response => response.json())
+      .then(data => {
+        const events = data.events || [];
+        // Find the game involving NC State
+        const game = events.find(evt => 
+          evt.competitions[0].competitors.some(comp => comp.team.id === TEAM_ID)
+        );
+
+        // If game is live or final today, show it
+        if (game) {
+          const state = game.status.type.state;
+          if (state === 'in' || state === 'post') {
+            const summaryUrl = ENDPOINTS[type].replace('scoreboard', 'summary') + '?event=' + game.id;
+            return Promise.all([
+                fetch(summaryUrl).then(r => r.json()),
+                fetchPick(game.id, type)
+            ]).then(([summary, pickedPlayerId]) => renderGame(game, summary, null, pickedPlayerId));
+          } else if (state === 'pre') {
+             const sportPath = type === 'mens' ? 'mens-college-basketball' : 'womens-college-basketball';
+             return Promise.all([
+                 fetchPick(game.id, type),
+                 fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${sportPath}/teams/${TEAM_ID}?enable=roster`).then(r => r.json())
+             ]).then(([pickedPlayerId, rosterData]) => {
+                 renderGame(game, null, null, pickedPlayerId, rosterData);
+             });
+          }
+        }
+
+        // Fallback: Find previous game
+        const sportPath = type === 'mens' ? 'mens-college-basketball' : 'womens-college-basketball';
+        const scheduleUrl = `https://site.api.espn.com/apis/site/v2/sports/basketball/${sportPath}/teams/${TEAM_ID}/schedule`;
+        
+        return fetch(scheduleUrl)
+          .then(r => r.json())
+          .then(scheduleData => {
+            const events = scheduleData.events || [];
+            const today = new Date();
+            
+            // Priority: 1. Game in progress
+            let targetGame = events.find(e => e.competitions[0].status.type.state === 'in');
+            
+            // 2. Game happening later today
+            if (!targetGame) {
+                targetGame = events.find(e => {
+                    const state = e.competitions[0].status.type.state;
+                    const gameDate = new Date(e.date);
+                    return state === 'pre' && gameDate.toDateString() === today.toDateString();
+                });
+            }
+
+            // 3. Previous game played
+            if (!targetGame) {
+                const completed = events.filter(e => e.competitions[0].status.type.state === 'post');
+                targetGame = completed[completed.length - 1];
+            }
+            
+            if (!targetGame) {
+              display.innerHTML = '<p>No recent games found.</p>';
+              return;
+            }
+            
+            const nextGame = events.find(e => e.competitions[0].status.type.state === 'pre' && e.id !== targetGame.id);
+            
+            const state = targetGame.competitions[0].status.type.state;
+            
+            if (state === 'pre') {
+                 const sportPath = type === 'mens' ? 'mens-college-basketball' : 'womens-college-basketball';
+                 return Promise.all([
+                     fetchPick(targetGame.id, type),
+                     fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${sportPath}/teams/${TEAM_ID}?enable=roster`).then(r => r.json())
+                 ]).then(([pickedPlayerId, rosterData]) => {
+                     renderGame(targetGame, null, nextGame, pickedPlayerId, rosterData);
+                 });
+            } else {
+                const summaryUrl = ENDPOINTS[type].replace('scoreboard', 'summary') + '?event=' + targetGame.id;
+                return Promise.all([
+                    fetch(summaryUrl).then(r => r.json()),
+                    fetchPick(targetGame.id, type)
+                ]).then(([summary, pickedPlayerId]) => renderGame(summary.header, summary, nextGame, pickedPlayerId));
+            }
+          });
+      })
+      .catch(err => {
+        console.error(err);
+        display.innerHTML = '<div class="error">Failed to load data. Please try again later.</div>';
+      });
+  }
+
+  function renderGame(event, summaryData, nextGame, pickedPlayerId, rosterData) {
+    const competition = event.competitions[0];
+    const status = (event.status || competition.status).type.detail;
+    const weather = event.weather || (summaryData && summaryData.gameInfo && summaryData.gameInfo.weather);
+    
+    // Identify Home and Away
+    const selectedTeam = competition.competitors.find(c => c.team.id == TEAM_ID);
+    const opponent = competition.competitors.find(c => c.team.id != TEAM_ID);
+
+    let nextGameHtml = '';
+    if (nextGame) {
+      const date = new Date(nextGame.date);
+      const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+      const nextOpponent = nextGame.competitions[0].competitors.find(c => c.team.id !== TEAM_ID);
+      const nextOpponentName = nextOpponent ? (nextOpponent.team.abbreviation || nextOpponent.team.shortDisplayName || nextOpponent.team.displayName) : 'TBD';
+      
+      nextGameHtml = `<div style="margin-top: 8px; font-size: 0.85em; color: #666;">Next: vs ${nextOpponentName} ${dateStr} ${timeStr}</div>`;
+    }
+
+    const getRank = (c) => {
+      const rank = c.rank || c.curatedRank?.current;
+      return (rank && rank <= 25) ? `#${rank} ` : '';
+    };
+
+    const display = document.getElementById('game-display');
+    
+    display.innerHTML = `
+      <div class="status">${status}</div>
+      <div class="score-board">
+        <div class="team">
+          <img src="${selectedTeam.team.logo || (selectedTeam.team.logos && selectedTeam.team.logos[0].href)}" alt="${selectedTeam.team.displayName}" class="team-logo">
+          <span class="team-name">${getRank(selectedTeam)}${selectedTeam.team.shortDisplayName || selectedTeam.team.nickname || selectedTeam.team.displayName}</span>
+          <div class="team-score">${selectedTeam.score || 0}</div>
+        </div>
+        <div class="vs">VS</div>
+        <div class="team">
+          <img src="${opponent.team.logo || (opponent.team.logos && opponent.team.logos[0].href)}" alt="${opponent.team.displayName}" class="team-logo">
+          <span class="team-name">${getRank(opponent)}${opponent.team.shortDisplayName || opponent.team.nickname || opponent.team.displayName}</span>
+          <div class="team-score">${opponent.score || 0}</div>
+        </div>
+      </div>
+      ${nextGameHtml}
+      <div id="stats-content">
+        ${(summaryData && summaryData.boxscore && renderPlayerStats(summaryData, pickedPlayerId)) || renderTeamStats(selectedTeam, opponent, rosterData, pickedPlayerId, event.id)}
+      </div>
+    `;
+  }
+
+  function renderPlayerPicker(rosterData, pickedPlayerId, gameId) {
+      const athletes = rosterData.team.athletes;
+      athletes.sort((a, b) => a.displayName.localeCompare(b.displayName));
+      
+      const options = athletes.map(p => {
+          const selected = String(p.id) === String(pickedPlayerId) ? 'selected' : '';
+          return `<option value="${p.id}" ${selected}>${p.displayName}</option>`;
+      }).join('');
+      
+      return `
+        <div style="text-align: center; margin-top: 20px; padding: 20px; background: #fff; border-radius: 8px;">
+            <h3>Make Your Pick</h3>
+            <p>Select a player for this game:</p>
+            <div style="display: flex; justify-content: center; gap: 10px; align-items: center;">
+                <select id="player-pick-select" style="padding: 8px; font-size: 1em; border-radius: 4px; border: 1px solid #ccc;">
+                    <option value="">-- Select Player --</option>
+                    ${options}
+                </select>
+                <button onclick="savePick('${gameId}')" style="padding: 8px 16px; background: #cc0000; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Save</button>
+            </div>
+            <div id="pick-message" style="margin-top: 10px; height: 20px; font-weight: bold;"></div>
+        </div>
+      `;
+  }
+
+  function renderTeamStats(team1, team2, rosterData, pickedPlayerId, gameId) {
+    // If no stats available (e.g. pre-game), return empty or basic record info
+    if (!team1.statistics || team1.statistics.length === 0) {
+      if (rosterData) {
+          return renderPlayerPicker(rosterData, pickedPlayerId, gameId);
+      }
+      return `<div class="leaders" style="text-align:center; margin-top:15px;">
+        <p>Game has not started.</p>
+        <p>${team1.team.abbreviation}: ${team1.records?.[0]?.summary || 'N/A'} | ${team2.team.abbreviation}: ${team2.records?.[0]?.summary || 'N/A'}</p>
+      </div>`;
+    }
+
+    // Helper to find stat value by name
+    const getStat = (team, name) => {
+      const stat = team.statistics.find(s => s.name === name);
+      return stat ? stat.displayValue : '-';
+    };
+
+    const statsToCompare = [
+      { label: 'FG%', key: 'fieldGoalsPercentage' },
+      { label: '3P%', key: 'threePointFieldGoalsPercentage' },
+      { label: 'FT%', key: 'freeThrowsPercentage' },
+      { label: 'Rebounds', key: 'totalRebounds' },
+      { label: 'Assists', key: 'assists' },
+      { label: 'Turnovers', key: 'turnovers' },
+      { label: 'Steals', key: 'steals' },
+      { label: 'Blocks', key: 'blocks' }
+    ];
+
+    let rows = statsToCompare.map(stat => `
+      <tr>
+        <td>${getStat(team1, stat.key)}</td>
+        <td style="font-weight:bold; color:#999; font-size:0.9em;">${stat.label}</td>
+        <td>${getStat(team2, stat.key)}</td>
+      </tr>
+    `).join('');
+
+    return `
+      <div class="section-title">Team Stats</div>
+      <div style="overflow-x: auto;">
+        <table class="stats-table">
+          <thead>
+            <tr>
+              <th>${team1.team.abbreviation}</th>
+              <th>Stat</th>
+              <th>${team2.team.abbreviation}</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function toggleTeamStats(index, btn) {
+    // Hide all stats containers
+    document.querySelectorAll('[id^="team-stats-"]').forEach(el => el.style.display = 'none');
+    // Show selected
+    document.getElementById('team-stats-' + index).style.display = 'block';
+    
+    // Update button states
+    const group = btn.parentElement;
+    group.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+
+  function renderPlayerStats(summary, pickedPlayerId) {
+    if (!summary || !summary.boxscore || !summary.boxscore.players) return '';
+
+    // Map requested columns to API labels
+    // API labels in 'names': MIN, PTS, REB, AST, STL, BLK, TO, PF
+    // We need to find the index in the 'stats' array for each player
+    const targetStats = ['MIN', 'PTS', 'FG', '3PT', 'FT', 'REB', 'STL', 'AST', 'BLK', 'TO', 'PF'];
+    
+    const sortedPlayers = [...summary.boxscore.players].sort((a, b) => {
+      return (a.team.id == TEAM_ID) ? -1 : (b.team.id == TEAM_ID) ? 1 : 0;
+    });
+
+    const teamHtmls = sortedPlayers.map((teamBox, index) => {
+      const statsData = teamBox.statistics && teamBox.statistics[0];
+      if (!statsData || !statsData.names || !statsData.athletes) return '';
+
+      const labels = statsData.names;
+      const indices = targetStats.map(stat => labels.indexOf(stat));
+      
+      const parseMA = (val) => {
+        const parts = val.split('-');
+        return { m: parseInt(parts[0]) || 0, a: parseInt(parts[1]) || 0 };
+      };
+
+      const playersWithVal = statsData.athletes
+        .filter(player => player.stats && player.stats.length > 0)
+        .map(player => {
+        const stats = player.stats;
+        
+        const score = calculateVal(stats, labels);
+
+        return { player, stats, score };
+      });
+
+      playersWithVal.sort((a, b) => b.score - a.score);
+
+      const rows = playersWithVal.map(({ player, stats, score }) => {
+        const name = player.athlete ? (player.athlete.shortName || player.athlete.displayName) : (player.displayName || 'Team');
+        const activeIndicator = player.active ? '🏀 ' : '';
+        const cells = indices.map(idx => `<td>${idx !== -1 ? (stats[idx] || '0') : '-'}</td>`).join('');
+
+        const isPicked = player.athlete && String(player.athlete.id) === String(pickedPlayerId);
+        const rowClass = isPicked ? 'picked-row' : '';
+        return `<tr class="${rowClass}">
+          <td style="text-align:left; white-space:nowrap;">${activeIndicator}${name}</td>
+          ${cells}
+          <td style="font-weight:bold;">${score}</td>
+        </tr>`;
+      }).join('');
+
+      const displayStyle = index === 0 ? 'block' : 'none';
+      return `
+        <div id="team-stats-${index}" style="display: ${displayStyle};">
+          <div style="overflow-x: auto;">
+            <table class="stats-table">
+              <thead><tr><th style="text-align:left;">Player</th>${targetStats.map(s => `<th>${s}</th>`).join('')}<th>VAL</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    });
+
+    const toggleButtons = sortedPlayers.map((teamBox, index) => {
+      const activeClass = index === 0 ? 'active' : '';
+      const teamName = teamBox.team.abbreviation || teamBox.team.shortDisplayName;
+      return `<button class="${activeClass}" onclick="toggleTeamStats(${index}, this)">${teamName}</button>`;
+    }).join('');
+
+    const formulaHtml = `<div style="margin-top: 15px; font-size: 0.8em; color: #888; text-align: center;">
+      VAL = PTS + 3PM - FGA + (FGM * 2) - FTA + FTM + REB + (AST * 2) + (STL * 4) + (BLK * 4) - (TO * 2)
+    </div>`;
+
+    return `<div class="controls" style="margin-top: 10px; margin-bottom: 10px;"><div class="btn-group">${toggleButtons}</div></div>` + teamHtmls.join('') + formulaHtml;
+  }
+
+  // Load Men's stats by default on page load
+  auth.onAuthStateChanged(user => {
+      if (user) {
+          USER_UID = user.uid;
+          loadStats(localStorage.getItem('league') || 'mens');
+      }
+  });
+</script>
+</body>
+</html>

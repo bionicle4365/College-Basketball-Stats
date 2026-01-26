@@ -1,0 +1,295 @@
+---
+layout: default
+title: Groups
+permalink: /groups/
+---
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        .groups-container {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .section { margin-bottom: 30px; }
+        .group-card {
+            border: 1px solid #eee;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .group-name { font-weight: bold; font-size: 1.1em; }
+        .btn {
+            padding: 8px 16px;
+            border-radius: 4px;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .btn-primary { background-color: #cc0000; color: white; }
+        .btn-secondary { background-color: #eee; color: #333; }
+        .input-group { display: flex; gap: 10px; margin-bottom: 15px; }
+        .input-group input {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .leaderboard-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        .leaderboard-table th, .leaderboard-table td {
+            padding: 8px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        .loading { color: #666; font-style: italic; }
+    </style>
+</head>
+<body>
+    <div class="groups-container">
+        <h2>Groups</h2>
+        
+        <div class="section">
+            <h3>Create Group</h3>
+            <div class="input-group">
+                <input type="text" id="new-group-name" placeholder="Enter group name">
+                <label style="display: flex; align-items: center; gap: 5px; white-space: nowrap;">
+                    <input type="checkbox" id="new-group-private" onchange="togglePasswordInput()"> Private
+                </label>
+                <input type="password" id="new-group-password" placeholder="Password" style="display:none;">
+                <button class="btn btn-primary" onclick="createGroup()">Create</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>My Groups</h3>
+            <div id="my-groups-list">
+                <div class="loading">Loading...</div>
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>Available Groups</h3>
+            <div id="available-groups-list">
+                <div class="loading">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const TEAM_ID = localStorage.getItem('favoriteTeamId') || '152';
+        const LEAGUE = localStorage.getItem('league') || 'mens';
+        const SPORT_PATH = LEAGUE === 'womens' ? 'womens-college-basketball' : 'mens-college-basketball';
+        let USER_UID = null;
+
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                USER_UID = user.uid;
+                loadGroups();
+            } else {
+                window.location.href = '/College-Basketball-Stats/login';
+            }
+        });
+
+        function togglePasswordInput() {
+            const isPrivate = document.getElementById('new-group-private').checked;
+            const passwordInput = document.getElementById('new-group-password');
+            passwordInput.style.display = isPrivate ? 'block' : 'none';
+        }
+
+        function createGroup() {
+            const nameInput = document.getElementById('new-group-name');
+            const name = nameInput.value.trim();
+            const isPrivate = document.getElementById('new-group-private').checked;
+            const password = document.getElementById('new-group-password').value.trim();
+
+            if (!name) return alert('Please enter a group name');
+            if (isPrivate && !password) return alert('Please enter a password for private group');
+
+            db.collection('groups').where('name', '==', name).get().then(snapshot => {
+                if (!snapshot.empty) {
+                    alert('Group name already exists. Please choose another.');
+                    return;
+                }
+
+                db.collection('groups').add({
+                    name: name,
+                    teamId: TEAM_ID,
+                    league: LEAGUE,
+                    members: [USER_UID],
+                    isPrivate: isPrivate,
+                    password: isPrivate ? password : null,
+                    createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                }).then(() => {
+                    nameInput.value = '';
+                    document.getElementById('new-group-private').checked = false;
+                    document.getElementById('new-group-password').value = '';
+                    togglePasswordInput();
+                    loadGroups();
+                }).catch(err => {
+                    console.error("Error creating group: ", err);
+                    alert('Error creating group');
+                });
+            });
+        }
+
+        function joinGroup(groupId, isPrivate) {
+            if (isPrivate) {
+                const password = prompt("Enter group password:");
+                if (!password) return;
+                
+                db.collection('groups').doc(groupId).get().then(doc => {
+                    if (doc.exists) {
+                        const groupData = doc.data();
+                        if (groupData.password === password) {
+                            addToGroup(groupId);
+                        } else {
+                            alert("Incorrect password");
+                        }
+                    }
+                });
+            } else {
+                addToGroup(groupId);
+            }
+        }
+
+        function addToGroup(groupId) {
+            db.collection('groups').doc(groupId).update({
+                members: firebase.firestore.FieldValue.arrayUnion(USER_UID)
+            }).then(() => {
+                loadGroups();
+            });
+        }
+
+        function loadGroups() {
+            db.collection('groups')
+                .where('teamId', '==', TEAM_ID)
+                .where('league', '==', LEAGUE)
+                .get()
+                .then(snapshot => {
+                    const myGroups = [];
+                    const availableGroups = [];
+
+                    snapshot.forEach(doc => {
+                        const data = doc.data();
+                        data.id = doc.id;
+                        if (data.members && data.members.includes(USER_UID)) {
+                            myGroups.push(data);
+                        } else {
+                            availableGroups.push(data);
+                        }
+                    });
+
+                    renderGroups('my-groups-list', myGroups, true);
+                    renderGroups('available-groups-list', availableGroups, false);
+                });
+        }
+
+        function renderGroups(containerId, groups, isMember) {
+            const container = document.getElementById(containerId);
+            if (groups.length === 0) {
+                container.innerHTML = '<p>No groups found.</p>';
+                return;
+            }
+
+            container.innerHTML = groups.map(group => {
+                const isPrivate = group.isPrivate || false;
+                const lockIcon = isPrivate ? '🔒 ' : '';
+                return `
+                <div class="group-card">
+                    <div>
+                        <div class="group-name">${lockIcon}${group.name}</div>
+                        <div style="font-size: 0.9em; color: #666;">${group.members.length} members</div>
+                    </div>
+                    ${isMember ? 
+                        `<button class="btn btn-secondary" onclick="viewLeaderboard('${group.id}')">View Leaderboard</button>` : 
+                        `<button class="btn btn-primary" onclick="joinGroup('${group.id}', ${isPrivate})">Join</button>`
+                    }
+                </div>
+                <div id="leaderboard-${group.id}" style="display:none; margin-top: 10px; padding: 10px; background: #f9f9f9; border-radius: 4px;">
+                    Loading scores...
+                </div>
+            `}).join('');
+        }
+
+        async function viewLeaderboard(groupId) {
+            const container = document.getElementById(`leaderboard-${groupId}`);
+            if (container.style.display === 'block') {
+                container.style.display = 'none';
+                return;
+            }
+            container.style.display = 'block';
+            
+            try {
+                const scheduleResp = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${SPORT_PATH}/teams/${TEAM_ID}/schedule`);
+                const scheduleData = await scheduleResp.json();
+                const completedGames = (scheduleData.events || []).filter(e => e.competitions[0].status.type.state === 'post');
+
+                const scores = {};
+                const groupDoc = await db.collection('groups').doc(groupId).get();
+                const members = groupDoc.data().members || [];
+                members.forEach(m => scores[m] = 0);
+
+                const collectionName = `${TEAM_ID}${LEAGUE === 'mens' ? 'm' : 'w'}`;
+
+                const gamePromises = completedGames.map(async (event) => {
+                    const gameId = event.id;
+                    const pickDoc = await db.collection(collectionName).doc(gameId).get().catch(() => null);
+                    if (!pickDoc || !pickDoc.exists) return;
+                    const picks = pickDoc.data();
+
+                    const summaryResp = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${SPORT_PATH}/summary?event=${gameId}`);
+                    const summary = await summaryResp.json();
+                    if (!summary.boxscore || !summary.boxscore.players) return;
+                    
+                    const teamStats = summary.boxscore.players.find(p => p.team.id === TEAM_ID);
+                    if (!teamStats) return;
+
+                    const athletes = teamStats.statistics[0].athletes;
+                    const labels = teamStats.statistics[0].names;
+
+                    const playerVals = {};
+                    athletes.forEach(p => {
+                        if (p.athlete) playerVals[p.athlete.id] = calculateVal(p.stats, labels);
+                    });
+
+                    members.forEach(uid => {
+                        const pickedPlayerId = picks[uid];
+                        if (pickedPlayerId && playerVals[pickedPlayerId]) {
+                            scores[uid] += playerVals[pickedPlayerId];
+                        }
+                    });
+                });
+
+                await Promise.all(gamePromises);
+
+                const sortedMembers = members.sort((a, b) => scores[b] - scores[a]);
+                
+                let html = `<table class="leaderboard-table"><thead><tr><th>Rank</th><th>User</th><th>Points</th></tr></thead><tbody>`;
+                sortedMembers.forEach((uid, index) => {
+                    const displayName = uid === USER_UID ? 'You' : `Member ${uid.substr(0, 4)}...`;
+                    html += `<tr><td>${index + 1}</td><td>${displayName}</td><td>${scores[uid]}</td></tr>`;
+                });
+                html += `</tbody></table>`;
+                
+                container.innerHTML = html;
+
+            } catch (e) {
+                console.error(e);
+                container.innerHTML = 'Error loading leaderboard.';
+            }
+        }
+    </script>
+</body>
+</html>

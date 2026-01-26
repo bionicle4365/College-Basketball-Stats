@@ -1,0 +1,139 @@
+---
+layout: default
+title: Settings
+permalink: /settings/
+---
+<div class="settings-container" style="padding: 20px; max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+    <h2 style="margin-top: 0;">Settings</h2>
+    <div class="form-group">
+        <label for="team-select" style="display: block; margin-bottom: 5px; font-weight: bold;">Default Team:</label>
+        <div style="position: relative;">
+            <input type="text" name="team" id="team-select" placeholder="Search for your team..." autocomplete="off" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box;">
+            <div id="teams-dropdown" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #ddd; border-radius: 0 0 4px 4px; max-height: 200px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"></div>
+        </div>
+        <p style="font-size: 0.9em; color: #666; margin-top: 5px;">Select the team you want to see by default.</p>
+    </div>
+    <button onclick="saveSettings()" style="margin-top: 15px; padding: 10px 20px; background-color: #cc0000; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Save Changes</button>
+    <div id="message" style="margin-top: 15px; padding: 10px; border-radius: 4px; display: none;"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
+<script>
+    const firebaseConfig = {
+        apiKey: "AIzaSyABrOdAazMKC1W6KC0637QKRqJaLhYXYj4",
+        authDomain: "subtle-lambda-485402-j7.firebaseapp.com",
+        projectId: "subtle-lambda-485402-j7",
+        storageBucket: "subtle-lambda-485402-j7.firebasestorage.app",
+        messagingSenderId: "494315015081",
+        appId: "1:494315015081:web:d23e5b5532ff75553152b8",
+        measurementId: "G-DEZV030R84"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const auth = firebase.auth();
+
+    const teamsDropdown = document.getElementById('teams-dropdown');
+    const teamInput = document.getElementById('team-select');
+    let teamsData = [];
+
+    // Fetch teams from ESPN API
+    fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000')
+        .then(response => response.json())
+        .then(data => {
+            if (data.sports && data.sports[0].leagues && data.sports[0].leagues[0].teams) {
+                teamsData = data.sports[0].leagues[0].teams.map(t => t.team);
+
+                // Load current setting
+                auth.onAuthStateChanged(user => {
+                    if (user) {
+                        db.collection('user_settings').doc(user.uid).get().then(doc => {
+                            if (doc.exists && doc.data().favoriteTeamId) {
+                                const teamId = doc.data().favoriteTeamId;
+                                const team = teamsData.find(t => t.id === teamId);
+                                if (team) teamInput.value = team.displayName;
+                                localStorage.setItem('favoriteTeamId', teamId);
+                            }
+                        });
+                    } else {
+                        const currentTeamId = localStorage.getItem('favoriteTeamId');
+                        if (currentTeamId) {
+                            const currentTeam = teamsData.find(t => t.id === currentTeamId);
+                            if (currentTeam) teamInput.value = currentTeam.displayName;
+                        }
+                    }
+                });
+            }
+        });
+
+    teamInput.addEventListener('input', function() {
+        const val = this.value.toLowerCase();
+        teamsDropdown.innerHTML = '';
+        if (!val) {
+            teamsDropdown.style.display = 'none';
+            return;
+        }
+        
+        const matches = teamsData.filter(t => t.displayName.toLowerCase().includes(val));
+        if (matches.length > 0) {
+            matches.forEach(team => {
+                const div = document.createElement('div');
+                div.textContent = team.displayName;
+                div.style.padding = '10px';
+                div.style.cursor = 'pointer';
+                div.style.borderBottom = '1px solid #eee';
+                div.onmouseover = () => div.style.backgroundColor = '#f0f0f0';
+                div.onmouseout = () => div.style.backgroundColor = 'white';
+                div.onclick = () => {
+                    teamInput.value = team.displayName;
+                    teamsDropdown.style.display = 'none';
+                };
+                teamsDropdown.appendChild(div);
+            });
+            teamsDropdown.style.display = 'block';
+        } else {
+            teamsDropdown.style.display = 'none';
+        }
+    });
+
+    document.addEventListener('click', function(e) {
+        if (e.target !== teamInput && e.target !== teamsDropdown) {
+            teamsDropdown.style.display = 'none';
+        }
+    });
+
+    function saveSettings() {
+        const selectedName = teamInput.value;
+        const selectedTeam = teamsData.find(t => t.displayName === selectedName);
+        const msg = document.getElementById('message');
+        
+        if (selectedTeam) {
+            const user = auth.currentUser;
+            if (user) {
+                db.collection('user_settings').doc(user.uid).set({
+                    favoriteTeamId: selectedTeam.id
+                }, { merge: true }).then(() => {
+                    localStorage.setItem('favoriteTeamId', selectedTeam.id);
+                    msg.textContent = 'Settings saved! Redirecting to team page...';
+                    msg.style.backgroundColor = '#d4edda';
+                    msg.style.color = '#155724';
+                    msg.style.display = 'block';
+                    setTimeout(() => window.location.href = '/College-Basketball-Stats/team', 1500);
+                });
+            } else {
+                localStorage.setItem('favoriteTeamId', selectedTeam.id);
+                msg.textContent = 'Settings saved locally! Redirecting to team page...';
+                msg.style.backgroundColor = '#d4edda';
+                msg.style.color = '#155724';
+                msg.style.display = 'block';
+                setTimeout(() => window.location.href = '/College-Basketball-Stats/team', 1500);
+            }
+        } else {
+            msg.textContent = 'Please select a valid team from the list.';
+            msg.style.backgroundColor = '#f8d7da';
+            msg.style.color = '#721c24';
+            msg.style.display = 'block';
+        }
+    }
+</script>

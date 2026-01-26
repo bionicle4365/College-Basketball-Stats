@@ -1,0 +1,249 @@
+---
+layout: default
+title: Roster Stats
+permalink: /roster/
+---
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        .player-container {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            max-width: 1000px;
+            margin: 20px auto;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .player-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            font-size: 0.9em;
+        }
+        .player-table th, .player-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        .player-table th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+            color: #333;
+            cursor: pointer;
+        }
+        .player-table tr.player-row:hover {
+            background-color: #f5f5f5;
+        }
+        .headshot {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            vertical-align: middle;
+            margin-right: 10px;
+            object-fit: cover;
+            background-color: #eee;
+        }
+        .loading { text-align: center; padding: 20px; color: #666; }
+        .chart-container { position: relative; height: 200px; width: 100%; margin-top: 20px; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="player-container">
+        <h2 id="team-name">Team Roster & Stats</h2>
+        <div id="player-content" style="overflow-x: auto;">
+            <div class="loading">Loading players...</div>
+        </div>
+    </div>
+
+    <script>
+        if (localStorage.getItem('isLoggedIn') !== 'true') {
+            window.location.href = '/College-Basketball-Stats/login';
+        }
+
+        const TEAM_ID = localStorage.getItem('favoriteTeamId') || '152';
+        const LEAGUE = localStorage.getItem('league') || 'mens';
+        const SPORT_PATH = LEAGUE === 'womens' ? 'womens-college-basketball' : 'mens-college-basketball';
+
+        let teamSchedule = [];
+        fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${SPORT_PATH}/teams/${TEAM_ID}/schedule`)
+            .then(r => r.json())
+            .then(data => {
+                 if (data.events) {
+                    teamSchedule = data.events
+                        .filter(e => e.competitions[0].status.type.completed)
+                        .map(e => {
+                            const date = new Date(e.date);
+                            return {
+                                id: e.id,
+                                date: date,
+                                label: date.toLocaleDateString('en-US', {month:'numeric', day:'numeric'})
+                            };
+                        })
+                        .sort((a, b) => a.date - b.date);
+                }
+            });
+
+        // Try to fetch roster
+        const ROSTER_URL = `https://site.api.espn.com/apis/site/v2/sports/basketball/${SPORT_PATH}/teams/${TEAM_ID}?enable=roster,stats`;
+
+        
+        fetch(ROSTER_URL)
+            .then(r => r.json())
+            .then(data => {
+                const teamName = data.team.displayName;
+                document.getElementById('team-name').textContent = teamName + ' Roster';
+                const athletes = data.team.athletes;
+                renderTable(['Pos', 'Height', 'Weight', 'Class', 'Birthplace'], athletes, 'roster');
+            })
+            .catch(e => {
+                document.getElementById('player-content').innerHTML = '<p>Error loading data.</p>';
+        });
+
+        function renderTable(headers, data, type) {
+            let html = `<table class="player-table"><thead><tr><th>Player</th>`;
+            headers.forEach(h => html += `<th>${h}</th>`);
+            html += `</tr></thead><tbody>`;
+
+            data.forEach(item => {
+                if (item.active === false) return;
+
+                const player = type === 'stats' ? item.athlete : item;
+                const stats = type === 'stats' ? item.stats : [
+                    player.position.abbreviation,
+                    player.displayHeight,
+                    player.displayWeight,
+                    player.experience?.abbreviation || '-',
+                    player.birthPlace?.city ? `${player.birthPlace.city}, ${player.birthPlace.stateAbbrev || player.birthPlace.country}` : '-'
+                ];
+
+                const img = player.headshot ? player.headshot.href : 'https://a.espncdn.com/i/headshots/nophoto.png';
+                
+                html += `<tr class="player-row" onclick="toggleStats('${player.id}')" style="cursor: pointer;">
+                    <td><img src="${img}" class="headshot"><strong>${player.displayName}</strong> <span style="color:#888; font-size:0.8em">#${player.jersey || ''}</span></td>
+                    ${stats.map(s => `<td>${s}</td>`).join('')}
+                </tr>
+                <tr id="stats-${player.id}" style="display: none; background-color: #f8f9fa;">
+                    <td colspan="${headers.length + 1}" style="padding: 15px;">
+                        <div id="stats-content-${player.id}">
+                            Loading...
+                        </div>
+                    </td>
+                </tr>`;
+            });
+            html += '</tbody></table>';
+            document.getElementById('player-content').innerHTML = html;
+        }
+
+        function toggleStats(id) {
+            const row = document.getElementById('stats-' + id);
+            const content = document.getElementById('stats-content-' + id);
+            
+            if (row.style.display === 'none') {
+                row.style.display = 'table-row';
+                if (!content.hasAttribute('data-loaded')) {
+                    const gamelogUrl = `https://site.web.api.espn.com/apis/common/v3/sports/basketball/${SPORT_PATH}/athletes/${id}/gamelog`;
+
+                    fetch(gamelogUrl)
+                        .then(r => r.json())
+                        .then(gamelogData => {
+                            // Process Gamelog for Chart
+                            let chartHtml = '';
+                            let chartData = null;
+                            
+                            if (gamelogData.seasonTypes) {
+                                const season = gamelogData.seasonTypes.find(s => s.categories) || gamelogData.seasonTypes[0];
+                                if (season && season.categories) {
+                                    const cat = season.categories.find(c => c.name === 'offensive') || season.categories[0];
+                                    if (cat && cat.events) {
+                                        const labels = gamelogData.labels;
+                                        const playerEvents = cat.events;
+                                        const playerStatsMap = {};
+                                        playerEvents.forEach(evt => {
+                                            playerStatsMap[evt.eventId] = evt;
+                                        });
+                                        
+                                        const gameLabels = [];
+                                        const valData = [];
+
+                                        teamSchedule.forEach(game => {
+                                            gameLabels.push(game.label);
+                                            let val = 0;
+                                            const evt = playerStatsMap[game.id];
+
+                                            if (evt && evt.stats) {
+                                                const stats = evt.stats;
+                                                const getStat = (key) => {
+                                                    const idx = labels.indexOf(key);
+                                                    return idx > -1 ? (stats[idx] || '0') : '0';
+                                                };
+                                                const parseMA = (val) => {
+                                                    const parts = val.split('-');
+                                                    return { m: parseInt(parts[0]) || 0, a: parseInt(parts[1]) || 0 };
+                                                };
+
+                                                const pts = parseInt(getStat('PTS')) || 0;
+                                                const fg = parseMA(getStat('FG'));
+                                                const threePt = parseMA(getStat('3PT'));
+                                                const ft = parseMA(getStat('FT'));
+                                                const reb = parseInt(getStat('REB')) || 0;
+                                                const ast = parseInt(getStat('AST')) || 0;
+                                                const stl = parseInt(getStat('STL')) || 0;
+                                                const blk = parseInt(getStat('BLK')) || 0;
+                                                const tov = parseInt(getStat('TO')) || 0;
+
+                                                val = pts + threePt.m - fg.a + (fg.m * 2) - ft.a + ft.m + reb + (ast * 2) + (stl * 4) + (blk * 4) - (tov * 2);
+                                            }
+                                            valData.push(val);
+                                        });
+                                        
+                                        chartData = { labels: gameLabels, data: valData };
+                                        chartHtml = `<div class="chart-container"><canvas id="chart-${id}"></canvas></div>`;
+                                    }
+                                }
+                            }
+
+                            content.innerHTML = `
+                                ${chartHtml}
+                            `;
+                            
+                            if (chartData) {
+                                new Chart(document.getElementById(`chart-${id}`), {
+                                    type: 'line',
+                                    data: {
+                                        labels: chartData.labels,
+                                        datasets: [{
+                                            label: 'VAL',
+                                            data: chartData.data,
+                                            borderColor: '#cc0000',
+                                            backgroundColor: 'rgba(204, 0, 0, 0.1)',
+                                            tension: 0.1,
+                                            fill: true
+                                        }]
+                                    },
+                                    options: {
+                                        responsive: true,
+                                        maintainAspectRatio: false,
+                                        plugins: {
+                                            legend: { display: false },
+                                            title: { display: true, text: 'Value (VAL) per Game' }
+                                        },
+                                        scales: {
+                                            y: { beginAtZero: true }
+                                        }
+                                    }
+                                });
+                            }
+
+                            content.setAttribute('data-loaded', 'true');
+                        });
+                }
+            } else {
+                row.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>

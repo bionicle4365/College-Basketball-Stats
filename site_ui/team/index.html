@@ -1,435 +1,212 @@
 ---
 layout: default
-title: Team
+title: Team Schedule
+permalink: /team/
 ---
 <!DOCTYPE html>
 <html>
 <head>
-    <title>{{ page.title }} - {{ site.title }}</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <script>
-      if (localStorage.getItem('isLoggedIn') !== 'true') {
-        window.location.href = '/College-Basketball-Stats/login';
-      }
-    </script>
     <style>
-    .stats-container {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      width: fit-content;
-      max-width: 100%;
-      box-sizing: border-box;
-      margin: 0 auto;
-      padding: 20px;
-      border: 1px solid #e1e4e8;
-      border-radius: 6px;
-      background-color: #f6f8fa;
-    }
-    .controls {
-      margin-bottom: 20px;
-      text-align: center;
-    }
-    .btn-group {
-      display: inline-flex;
-      border: 1px solid #cc0000;
-      border-radius: 4px;
-      overflow: hidden;
-    }
-    .btn-group button {
-      background-color: white;
-      border: none;
-      padding: 10px 20px;
-      cursor: pointer;
-      font-weight: bold;
-      color: #cc0000;
-      transition: background 0.2s;
-    }
-    .btn-group button.active {
-      background-color: #cc0000;
-      color: white;
-    }
-    .game-card {
-      background: white;
-      padding: 20px;
-      border-radius: 8px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-      text-align: center;
-    }
-    .status {
-      font-size: 1.0em;
-      color: #666;
-      margin-bottom: 15px;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-    .score-board {
-      display: flex;
-      justify-content: space-around;
-      align-items: center;
-      margin-bottom: 20px;
-    }
-    .team {
-      flex: 1;
-    }
-    .team-logo {
-      width: 50px;
-      height: 50px;
-      margin-bottom: 10px;
-    }
-    .team-name {
-      font-weight: bold;
-      display: block;
-      margin-bottom: 5px;
-    }
-    .team-score {
-      font-size: 2.5em;
-      font-weight: bold;
-      color: #333;
-    }
-    .vs {
-      color: #999;
-      font-size: 0.9em;
-      margin: 0 10px;
-    }
-    .game-info {
-      border-top: 1px solid #eee;
-      padding-top: 15px;
-      font-size: 1.0em;
-      color: #555;
-    }
-    .loading {
-      color: #666;
-      font-style: italic;
-    }
-    .error {
-      color: #cc0000;
-    }
-    .leaders {
-      margin-top: 10px;
-      font-size: 0.9em;
-      text-align: left;
-      color: #555;
-    }
-    .leader-row {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 2px;
-    }
-    .stats-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 15px;
-      font-size: 0.9em;
-    }
-    .stats-table th, .stats-table td {
-      padding: 6px 4px;
-      text-align: center;
-      border-bottom: 1px solid #eee;
-      white-space: nowrap;
-    }
-    .stats-table th {
-      background-color: #f9f9f9;
-      font-weight: bold;
-      color: #555;
-    }
-    @media (max-width: 600px) {
-      .stats-container {
-        width: 100%;
-        padding: 10px;
-      }
-    }
-  </style>
+        .schedule-container {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .schedule-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        .schedule-table th, .schedule-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        .schedule-table th {
+            background-color: #f8f9fa;
+            font-weight: bold;
+            color: #333;
+        }
+        .schedule-table tbody tr {
+            cursor: pointer;
+        }
+        .schedule-table tbody tr:hover {
+            background-color: #f5f5f5;
+        }
+        .win { color: green; font-weight: bold; }
+        .loss { color: #cc0000; font-weight: bold; }
+        .team-logo { width: 24px; height: 24px; vertical-align: middle; margin-right: 8px; }
+    </style>
 </head>
 <body>
-
-<div class="stats-container">
-  <div class="controls">
-    <div class="btn-group">
-      <button id="btn-mens" class="active" onclick="loadStats('mens')">Men's</button>
-      <button id="btn-womens" onclick="loadStats('womens')">Women's</button>
+    <div class="schedule-container">
+        <h2 id="team-name">Schedule</h2>
+        <div id="schedule-content">Loading...</div>
     </div>
-  </div>
+    <script>
+        checkAuth();
 
-  <div id="game-display" class="game-card">
-    <div class="loading">Loading stats...</div>
-  </div>
-</div>
+        const TEAM_ID = localStorage.getItem('favoriteTeamId') || '152';
+        const LEAGUE = localStorage.getItem('league') || 'mens';
+        const SPORT_PATH = LEAGUE === 'womens' ? 'womens-college-basketball' : 'mens-college-basketball';
+        const COLLECTION_NAME = `${TEAM_ID}${LEAGUE === 'mens' ? 'm' : 'w'}`;
+        let USER_UID = null
+        let playerMap = {};
 
-<script>
-  const NC_STATE_ID = '152'; // ESPN Team ID for NC State
-
-  const ENDPOINTS = {
-    mens: 'https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard',
-    womens: 'https://site.api.espn.com/apis/site/v2/sports/basketball/womens-college-basketball/scoreboard'
-  };
-
-  function loadStats(type) {
-    // Update buttons
-    document.getElementById('btn-mens').classList.toggle('active', type === 'mens');
-    document.getElementById('btn-womens').classList.toggle('active', type === 'womens');
-    
-    const display = document.getElementById('game-display');
-    display.innerHTML = '<div class="loading">Fetching latest scores...</div>';
-
-    fetch(ENDPOINTS[type])
-      .then(response => response.json())
-      .then(data => {
-        const events = data.events || [];
-        // Find the game involving NC State
-        const game = events.find(evt => 
-          evt.competitions[0].competitors.some(comp => comp.team.id === NC_STATE_ID)
-        );
-
-        // If game is live or final today, show it
-        if (game) {
-          const state = game.status.type.state;
-          if (state === 'in' || state === 'post') {
-            const summaryUrl = ENDPOINTS[type].replace('scoreboard', 'summary') + '?event=' + game.id;
-            return fetch(summaryUrl)
-              .then(r => r.json())
-              .then(summary => renderGame(game, summary));
-          }
-        }
-
-        // Fallback: Find previous game
-        const sportPath = type === 'mens' ? 'mens-college-basketball' : 'womens-college-basketball';
-        const scheduleUrl = `https://site.api.espn.com/apis/site/v2/sports/basketball/${sportPath}/teams/${NC_STATE_ID}/schedule`;
-        
-        return fetch(scheduleUrl)
-          .then(r => r.json())
-          .then(scheduleData => {
-            const events = scheduleData.events || [];
-            
-            // Priority: 'in' > 'post'
-            let targetGame = events.find(e => e.competitions[0].status.type.state === 'in');
-            
-            if (!targetGame) {
-                const completed = events.filter(e => e.competitions[0].status.type.state === 'post');
-                targetGame = completed[completed.length - 1];
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                USER_UID = user.uid;
             }
-            
-            if (!targetGame) {
-              display.innerHTML = '<p>No recent games found.</p>';
-              return;
-            }
-            
-            const nextGame = events.find(e => e.competitions[0].status.type.state === 'pre');
-            
-            const summaryUrl = ENDPOINTS[type].replace('scoreboard', 'summary') + '?event=' + targetGame.id;
-            return fetch(summaryUrl).then(r => r.json()).then(summary => renderGame(summary.header, summary, nextGame));
-          });
-      })
-      .catch(err => {
-        console.error(err);
-        display.innerHTML = '<div class="error">Failed to load data. Please try again later.</div>';
-      });
-  }
+            // Fetch roster first to get player names
+            fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${SPORT_PATH}/teams/${TEAM_ID}?enable=roster`)
+                .then(r => r.json())
+                .then(data => {
+                if (data.team && data.team.athletes) {
+                    data.team.athletes.forEach(p => playerMap[p.id] = p.displayName);
+                }
+                return fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${SPORT_PATH}/teams/${TEAM_ID}/schedule`);
+            })
+            .then(r => r.json())
+            .then(data => {
+                const events = data.events || [];
+                const teamDisplayName = data.team.displayName;
+                document.getElementById('team-name').textContent = `${teamDisplayName} Schedule`;
+                
+                let html = `<table class="schedule-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Opponent</th>
+                            <th>Result/Time</th>
+                            <th>Top Player (VAL)</th>
+                            <th>Your Pick (VAL)</th>
+                        </tr>
+                    </thead>
+                    <tbody>`;
+                
+                events.forEach(event => {
+                    const game = event.competitions[0];
+                    const date = new Date(event.date);
+                    const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    
+                    const myTeam = game.competitors.find(c => c.team.id === TEAM_ID);
+                    if (!myTeam) return;
 
-  function renderGame(event, summaryData, nextGame) {
-    const competition = event.competitions[0];
-    const status = (event.status || competition.status).type.detail;
-    const weather = event.weather || (summaryData && summaryData.gameInfo && summaryData.gameInfo.weather);
-    
-    // Identify Home and Away
-    const selectedTeam = competition.competitors.find(c => c.team.id == NC_STATE_ID);
-    const opponent = competition.competitors.find(c => c.team.id != NC_STATE_ID);
+                    const opponent = game.competitors.find(c => c.team.id !== TEAM_ID);
+                    
+                    const isHome = myTeam.homeAway === 'home';
+                    const vsAt = isHome ? 'vs' : '@';
+                    
+                    let result = game.status.type.detail;
+                    
+                    if (game.status.type.state === 'post') {
+                        const isWin = myTeam.winner;
+                        const score = `${myTeam.score.displayValue}-${opponent.score.displayValue}`;
+                        let otInfo = '';
+                        if (game.status.type.shortDetail && game.status.type.shortDetail.includes('/')) {
+                            otInfo = ` <span style="font-size:0.85em; color:#666;">(${game.status.type.shortDetail.split('/')[1]})</span>`;
+                        }
+                        result = `<span class="${isWin ? 'win' : 'loss'}">${isWin ? 'W' : 'L'}</span> ${score}${otInfo}`;
+                    } else {
+                         result = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+                    }
 
-    let nextGameHtml = '';
-    if (nextGame) {
-      const date = new Date(nextGame.date);
-      const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-      const timeStr = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-      const nextOpponent = nextGame.competitions[0].competitors.find(c => c.team.id !== NC_STATE_ID);
-      const nextOpponentName = nextOpponent ? (nextOpponent.team.abbreviation || nextOpponent.team.shortDisplayName || nextOpponent.team.displayName) : 'TBD';
-      
-      nextGameHtml = `<div style="margin-top: 8px; font-size: 0.85em; color: #666;">Next: vs ${nextOpponentName} ${dateStr} ${timeStr}</div>`;
-    }
+                    const logo = opponent.team.logos && opponent.team.logos.length > 0 ? `<img src="${opponent.team.logos[0].href}" class="team-logo">` : '';
 
-    const getRank = (c) => {
-      const rank = c.rank || c.curatedRank?.current;
-      return (rank && rank <= 25) ? `#${rank} ` : '';
-    };
+                    html += `<tr onclick="window.location.href='/College-Basketball-Stats/scoreboard?gameId=${game.id}'">
+                        <td>${dateStr}</td>
+                        <td>${vsAt} ${logo}${opponent.team.shortDisplayName || opponent.team.displayName}</td>
+                        <td>${result}</td>
+                        <td id="val-${game.id}" style="font-size: 0.9em; color: #666;">-</td>
+                        <td id="pick-${game.id}" style="font-size: 0.9em; color: #666;">-</td>
+                    </tr>`;
+                });
+                
+                html += '</tbody></table>';
+                document.getElementById('schedule-content').innerHTML = html;
 
-    const display = document.getElementById('game-display');
-    
-    display.innerHTML = `
-      <div class="status">${status}</div>
-      <div class="score-board">
-        <div class="team">
-          <img src="${selectedTeam.team.logo || (selectedTeam.team.logos && selectedTeam.team.logos[0].href)}" alt="${selectedTeam.team.displayName}" class="team-logo">
-          <span class="team-name">${getRank(selectedTeam)}${selectedTeam.team.shortDisplayName || selectedTeam.team.nickname || selectedTeam.team.displayName}</span>
-          <div class="team-score">${selectedTeam.score}</div>
-        </div>
-        <div class="vs">VS</div>
-        <div class="team">
-          <img src="${opponent.team.logo || (opponent.team.logos && opponent.team.logos[0].href)}" alt="${opponent.team.displayName}" class="team-logo">
-          <span class="team-name">${getRank(opponent)}${opponent.team.shortDisplayName || opponent.team.nickname || opponent.team.displayName}</span>
-          <div class="team-score">${opponent.score}</div>
-        </div>
-      </div>
-      ${nextGameHtml}
-      <div id="stats-content">
-        ${(summaryData && renderPlayerStats(summaryData)) || renderTeamStats(selectedTeam, opponent)}
-      </div>
-    `;
-  }
+                // Fetch details for completed games to get Top Player
+                events.forEach(event => {
+                    const game = event.competitions[0];
+                    
+                    const summaryPromise = (game.status.type.state === 'post') 
+                        ? fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${SPORT_PATH}/summary?event=${game.id}`).then(r => r.json())
+                        : Promise.resolve(null);
+                    const pickPromise = (USER_UID && typeof db !== 'undefined') 
+                        ? db.collection(COLLECTION_NAME).doc(String(event.id)).get().catch(() => null)
+                        : Promise.resolve(null);
 
-  function renderTeamStats(team1, team2) {
-    // If no stats available (e.g. pre-game), return empty or basic record info
-    if (!team1.statistics || team1.statistics.length === 0) {
-      return `<div class="leaders" style="text-align:center; margin-top:15px;">
-        <p>Game has not started.</p>
-        <p>${team1.team.abbreviation}: ${team1.records?.[0]?.summary || 'N/A'} | ${team2.team.abbreviation}: ${team2.records?.[0]?.summary || 'N/A'}</p>
-      </div>`;
-    }
+                    Promise.all([summaryPromise, pickPromise]).then(([summary, pickDoc]) => {
+                            if (summary && summary.boxscore && summary.boxscore.players) {
+                                const teamStats = summary.boxscore.players.find(p => p.team.id === TEAM_ID);
+                                if (teamStats && teamStats.statistics && teamStats.statistics[0]) {
+                                    const statsData = teamStats.statistics[0];
+                                    const labels = statsData.names;
+                                    const athletes = statsData.athletes;
+                                    
+                                    let maxVal = -Infinity;
+                                    let topPlayer = null;
 
-    // Helper to find stat value by name
-    const getStat = (team, name) => {
-      const stat = team.statistics.find(s => s.name === name);
-      return stat ? stat.displayValue : '-';
-    };
+                                    athletes.forEach(player => {
+                                        const val = calculateVal(player.stats, labels);
+                                        if (val > maxVal) {
+                                            maxVal = val;
+                                            topPlayer = player.athlete ? (player.athlete.shortName || player.athlete.displayName) : player.displayName;
+                                        }
+                                    });
 
-    const statsToCompare = [
-      { label: 'FG%', key: 'fieldGoalsPercentage' },
-      { label: '3P%', key: 'threePointFieldGoalsPercentage' },
-      { label: 'FT%', key: 'freeThrowsPercentage' },
-      { label: 'Rebounds', key: 'totalRebounds' },
-      { label: 'Assists', key: 'assists' },
-      { label: 'Turnovers', key: 'turnovers' },
-      { label: 'Steals', key: 'steals' },
-      { label: 'Blocks', key: 'blocks' }
-    ];
+                                    if (topPlayer) {
+                                        const cell = document.getElementById(`val-${game.id}`);
+                                        if (cell) {
+                                            cell.innerHTML = `<strong>${topPlayer}</strong> (${maxVal})`;
+                                            cell.style.color = '#333';
+                                        }
+                                    }
 
-    let rows = statsToCompare.map(stat => `
-      <tr>
-        <td>${getStat(team1, stat.key)}</td>
-        <td style="font-weight:bold; color:#999; font-size:0.9em;">${stat.label}</td>
-        <td>${getStat(team2, stat.key)}</td>
-      </tr>
-    `).join('');
+                                    // Update Pick VAL if pick exists
+                                    if (pickDoc && pickDoc.exists) {
+                                        const pickedPlayerId = pickDoc.data()[USER_UID];
+                                        if (pickedPlayerId) {
+                                            const player = athletes.find(p => p.athlete && String(p.athlete.id) === String(pickedPlayerId));
+                                            if (player) {
+                                                const val = calculateVal(player.stats, labels);
+                                                const pickCell = document.getElementById(`pick-${game.id}`);
+                                                if (pickCell) {
+                                                    const playerName = player.athlete ? player.athlete.displayName : (playerMap[pickedPlayerId] || 'Unknown');
+                                                    pickCell.innerHTML = `<strong>${playerName}</strong> (${val})`;
+                                                    pickCell.style.color = '#333';
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
 
-    return `
-      <div class="section-title">Team Stats</div>
-      <div style="overflow-x: auto;">
-        <table class="stats-table">
-          <thead>
-            <tr>
-              <th>${team1.team.abbreviation}</th>
-              <th>Stat</th>
-              <th>${team2.team.abbreviation}</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
-    `;
-  }
-
-  function toggleTeamStats(index, btn) {
-    // Hide all stats containers
-    document.querySelectorAll('[id^="team-stats-"]').forEach(el => el.style.display = 'none');
-    // Show selected
-    document.getElementById('team-stats-' + index).style.display = 'block';
-    
-    // Update button states
-    const group = btn.parentElement;
-    group.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-  }
-
-  function renderPlayerStats(summary) {
-    if (!summary || !summary.boxscore || !summary.boxscore.players) return '';
-
-    // Map requested columns to API labels
-    // API labels in 'names': MIN, PTS, REB, AST, STL, BLK, TO, PF
-    // We need to find the index in the 'stats' array for each player
-    const targetStats = ['MIN', 'PTS', 'FG', '3PT', 'FT', 'REB', 'STL', 'AST', 'BLK', 'TO', 'PF'];
-    
-    const sortedPlayers = [...summary.boxscore.players].sort((a, b) => {
-      return (a.team.id == NC_STATE_ID) ? -1 : (b.team.id == NC_STATE_ID) ? 1 : 0;
-    });
-
-    const teamHtmls = sortedPlayers.map((teamBox, index) => {
-      const statsData = teamBox.statistics && teamBox.statistics[0];
-      if (!statsData || !statsData.names || !statsData.athletes) return '';
-
-      const labels = statsData.names;
-      const indices = targetStats.map(stat => labels.indexOf(stat));
-      
-      const parseMA = (val) => {
-        const parts = val.split('-');
-        return { m: parseInt(parts[0]) || 0, a: parseInt(parts[1]) || 0 };
-      };
-
-      const playersWithVal = statsData.athletes
-        .filter(player => player.stats && player.stats.length > 0)
-        .map(player => {
-        const stats = player.stats;
-        
-        // Calculate Custom Score
-        const getStat = (key) => {
-          const idx = labels.indexOf(key);
-          return idx > -1 ? (stats[idx] || '0') : '0';
-        };
-
-        const pts = parseInt(getStat('PTS')) || 0;
-        const fg = parseMA(getStat('FG'));
-        const threePt = parseMA(getStat('3PT'));
-        const ft = parseMA(getStat('FT'));
-        const reb = parseInt(getStat('REB')) || 0;
-        const ast = parseInt(getStat('AST')) || 0;
-        const stl = parseInt(getStat('STL')) || 0;
-        const blk = parseInt(getStat('BLK')) || 0;
-        const tov = parseInt(getStat('TO')) || 0;
-
-        const score = pts + threePt.m - fg.a + (fg.m * 2) - ft.a + ft.m + reb + (ast * 2) + (stl * 4) + (blk * 4) - (tov * 2);
-
-        return { player, stats, score };
-      });
-
-      playersWithVal.sort((a, b) => b.score - a.score);
-
-      const rows = playersWithVal.map(({ player, stats, score }) => {
-        const name = player.athlete ? (player.athlete.shortName || player.athlete.displayName) : (player.displayName || 'Team');
-        const activeIndicator = player.active ? '🏀 ' : '';
-        const cells = indices.map(idx => `<td>${idx !== -1 ? (stats[idx] || '0') : '-'}</td>`).join('');
-
-        return `<tr>
-          <td style="text-align:left; white-space:nowrap;">${activeIndicator}${name}</td>
-          ${cells}
-          <td style="font-weight:bold;">${score}</td>
-        </tr>`;
-      }).join('');
-
-      const displayStyle = index === 0 ? 'block' : 'none';
-      return `
-        <div id="team-stats-${index}" style="display: ${displayStyle};">
-          <div style="overflow-x: auto;">
-            <table class="stats-table">
-              <thead><tr><th style="text-align:left;">Player</th>${targetStats.map(s => `<th>${s}</th>`).join('')}<th>VAL</th></tr></thead>
-              <tbody>${rows}</tbody>
-            </table>
-          </div>
-        </div>
-      `;
-    });
-
-    const toggleButtons = sortedPlayers.map((teamBox, index) => {
-      const activeClass = index === 0 ? 'active' : '';
-      const teamName = teamBox.team.abbreviation || teamBox.team.shortDisplayName;
-      return `<button class="${activeClass}" onclick="toggleTeamStats(${index}, this)">${teamName}</button>`;
-    }).join('');
-
-    const formulaHtml = `<div style="margin-top: 15px; font-size: 0.8em; color: #888; text-align: center;">
-      VAL = PTS + 3PM - FGA + (FGM * 2) - FTA + FTM + REB + (AST * 2) + (STL * 4) + (BLK * 4) - (TO * 2)
-    </div>`;
-
-    return `<div class="controls" style="margin-top: 10px; margin-bottom: 10px;"><div class="btn-group">${toggleButtons}</div></div>` + teamHtmls.join('') + formulaHtml;
-  }
-
-  // Load Men's stats by default on page load
-  document.addEventListener('DOMContentLoaded', () => {
-    loadStats('mens');
-  });
-</script>
+                            // Handle Pick Name (if not already handled by VAL update or if game not complete)
+                            if (pickDoc && pickDoc.exists) {
+                                const pickedPlayerId = pickDoc.data()[USER_UID];
+                                if (pickedPlayerId) {
+                                    const pickCell = document.getElementById(`pick-${game.id}`);
+                                    if (pickCell && pickCell.textContent === '-') {
+                                        const playerName = playerMap[pickedPlayerId] || 'Unknown';
+                                        const valDisplay = (game.status.type.state === 'post') ? ' (0)' : '';
+                                        pickCell.innerHTML = `<strong>${playerName}</strong>${valDisplay}`;
+                                        pickCell.style.color = '#333';
+                                    }
+                                }
+                            }
+                    });
+                });
+            })
+            .catch(err => {
+                console.error(err);
+                document.getElementById('schedule-content').innerHTML = 'Error loading schedule.';
+            });
+        });
+    </script>
 </body>
 </html>
