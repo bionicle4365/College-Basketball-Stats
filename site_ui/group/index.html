@@ -3,9 +3,6 @@ layout: default
 title: Groups
 permalink: /groups/
 ---
-<!DOCTYPE html>
-<html>
-<head>
     <style>
         .groups-container {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -55,35 +52,41 @@ permalink: /groups/
         }
         .loading { color: #666; font-style: italic; }
     </style>
-</head>
-<body>
     <div class="groups-container">
-        <h2>Groups</h2>
-        
-        <div class="section">
-            <h3>Create Group</h3>
-            <div class="input-group">
-                <input type="text" id="new-group-name" placeholder="Enter group name">
-                <label style="display: flex; align-items: center; gap: 5px; white-space: nowrap;">
-                    <input type="checkbox" id="new-group-private" onchange="togglePasswordInput()"> Private
-                </label>
-                <input type="password" id="new-group-password" placeholder="Password" style="display:none;">
-                <button class="btn btn-primary" onclick="createGroup()">Create</button>
+        <div id="groups-main-view">
+            <h2>Groups</h2>
+            
+            <div class="section">
+                <h3>Create Group</h3>
+                <div class="input-group">
+                    <input type="text" id="new-group-name" placeholder="Enter group name">
+                    <label style="display: flex; align-items: center; gap: 5px; white-space: nowrap;">
+                        <input type="checkbox" id="new-group-private" onchange="togglePasswordInput()"> Private
+                    </label>
+                    <input type="password" id="new-group-password" placeholder="Password" style="display:none;">
+                    <button class="btn btn-primary" onclick="createGroup()">Create</button>
+                </div>
+            </div>
+
+            <div class="section">
+                <h3>My Groups</h3>
+                <div id="my-groups-list">
+                    <div class="loading">Loading...</div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h3>Available Groups</h3>
+                <div id="available-groups-list">
+                    <div class="loading">Loading...</div>
+                </div>
             </div>
         </div>
 
-        <div class="section">
-            <h3>My Groups</h3>
-            <div id="my-groups-list">
-                <div class="loading">Loading...</div>
-            </div>
-        </div>
-
-        <div class="section">
-            <h3>Available Groups</h3>
-            <div id="available-groups-list">
-                <div class="loading">Loading...</div>
-            </div>
+        <div id="single-group-view" style="display:none;">
+            <button class="btn btn-secondary" onclick="window.location.hash = ''" style="margin-bottom: 15px;">&larr; Back to Groups</button>
+            <h2 id="single-group-name"></h2>
+            <div id="single-group-leaderboard"></div>
         </div>
     </div>
 
@@ -96,11 +99,22 @@ permalink: /groups/
         auth.onAuthStateChanged(user => {
             if (user) {
                 USER_UID = user.uid;
-                loadGroups();
+                handleRouting();
             } else {
                 window.location.href = '/College-Basketball-Stats/login';
             }
         });
+
+        window.addEventListener('hashchange', handleRouting);
+
+        function handleRouting() {
+            const groupId = window.location.hash.substring(1); // Remove the '#'
+            if (groupId) {
+                loadGroupDetail(groupId);
+            } else {
+                loadGroups();
+            }
+        }
 
         function togglePasswordInput() {
             const isPrivate = document.getElementById('new-group-private').checked;
@@ -173,6 +187,8 @@ permalink: /groups/
         }
 
         function loadGroups() {
+            document.getElementById('groups-main-view').style.display = 'block';
+            document.getElementById('single-group-view').style.display = 'none';
             db.collection('groups')
                 .where('teamId', '==', TEAM_ID)
                 .where('league', '==', LEAGUE)
@@ -213,23 +229,43 @@ permalink: /groups/
                         <div style="font-size: 0.9em; color: #666;">${group.members.length} members</div>
                     </div>
                     ${isMember ? 
-                        `<button class="btn btn-secondary" onclick="viewLeaderboard('${group.id}')">View Leaderboard</button>` : 
+                        `<button class="btn btn-secondary" onclick="navigateToGroup('${group.id}')">View Group</button>` : 
                         `<button class="btn btn-primary" onclick="joinGroup('${group.id}', ${isPrivate})">Join</button>`
                     }
-                </div>
-                <div id="leaderboard-${group.id}" style="display:none; margin-top: 10px; padding: 10px; background: #f9f9f9; border-radius: 4px;">
-                    Loading scores...
                 </div>
             `}).join('');
         }
 
-        async function viewLeaderboard(groupId) {
-            const container = document.getElementById(`leaderboard-${groupId}`);
-            if (container.style.display === 'block') {
-                container.style.display = 'none';
-                return;
-            }
-            container.style.display = 'block';
+        function navigateToGroup(id) {
+            window.location.hash = id;
+        }
+
+        function loadGroupDetail(groupId) {
+            document.getElementById('groups-main-view').style.display = 'none';
+            document.getElementById('single-group-view').style.display = 'block';
+            document.getElementById('single-group-name').textContent = 'Loading...';
+            const container = document.getElementById('single-group-leaderboard');
+            container.innerHTML = '<div class="loading">Loading leaderboard...</div>';
+
+            db.collection('groups').doc(groupId).get().then(doc => {
+                if (!doc.exists) {
+                    container.innerHTML = 'Group not found.';
+                    document.getElementById('single-group-name').textContent = 'Group Not Found';
+                    return;
+                }
+                const groupData = doc.data();
+                document.getElementById('single-group-name').textContent = groupData.name;
+                
+                if (!groupData.members.includes(USER_UID)) {
+                    container.innerHTML = 'You are not a member of this group.';
+                    return;
+                }
+
+                renderLeaderboard(container, groupData.members);
+            });
+        }
+
+        async function renderLeaderboard(container, members) {
             
             try {
                 const scheduleResp = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${SPORT_PATH}/teams/${TEAM_ID}/schedule`);
@@ -237,8 +273,6 @@ permalink: /groups/
                 const completedGames = (scheduleData.events || []).filter(e => e.competitions[0].status.type.state === 'post');
 
                 const scores = {};
-                const groupDoc = await db.collection('groups').doc(groupId).get();
-                const members = groupDoc.data().members || [];
                 members.forEach(m => scores[m] = 0);
 
                 const collectionName = `${TEAM_ID}${LEAGUE === 'mens' ? 'm' : 'w'}`;
@@ -291,5 +325,3 @@ permalink: /groups/
             }
         }
     </script>
-</body>
-</html>

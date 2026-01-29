@@ -3,13 +3,39 @@ layout: default
 title: Settings
 permalink: /settings/
 ---
-<div class="settings-container" style="padding: 20px; max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+<style>
+    .settings-container {
+        padding: 20px;
+        max-width: 600px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    #teams-dropdown {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 0 0 4px 4px;
+        max-height: 200px;
+        overflow-y: auto;
+        z-index: 1000;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .team-option { padding: 10px; cursor: pointer; border-bottom: 1px solid #eee; }
+    .team-option:hover { background-color: #f0f0f0; }
+</style>
+<div class="settings-container">
     <h2 style="margin-top: 0;">Settings</h2>
     <div class="form-group">
         <label for="team-select" style="display: block; margin-bottom: 5px; font-weight: bold;">Default Team:</label>
         <div style="position: relative;">
             <input type="text" name="team" id="team-select" placeholder="Search for your team..." autocomplete="off" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box;">
-            <div id="teams-dropdown" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #ddd; border-radius: 0 0 4px 4px; max-height: 200px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"></div>
+            <div id="teams-dropdown"></div>
         </div>
         <p style="font-size: 0.9em; color: #666; margin-top: 5px;">Select the team you want to see by default.</p>
     </div>
@@ -63,12 +89,8 @@ permalink: /settings/
         if (matches.length > 0) {
             matches.forEach(team => {
                 const div = document.createElement('div');
+                div.className = 'team-option';
                 div.textContent = team.displayName;
-                div.style.padding = '10px';
-                div.style.cursor = 'pointer';
-                div.style.borderBottom = '1px solid #eee';
-                div.onmouseover = () => div.style.backgroundColor = '#f0f0f0';
-                div.onmouseout = () => div.style.backgroundColor = 'white';
                 div.onclick = () => {
                     teamInput.value = team.displayName;
                     teamsDropdown.style.display = 'none';

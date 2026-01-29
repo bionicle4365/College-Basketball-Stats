@@ -191,8 +191,7 @@ permalink: /scoreboard/
     const display = document.getElementById('game-display');
     display.innerHTML = '<div class="loading">Fetching latest scores...</div>';
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const gameId = urlParams.get('gameId');
+    const gameId = window.location.hash.substring(1);
 
     if (gameId) {
         const summaryUrl = ENDPOINTS[type].replace('scoreboard', 'summary') + '?event=' + gameId;
@@ -532,5 +531,9 @@ permalink: /scoreboard/
           USER_UID = user.uid;
           loadStats(localStorage.getItem('league') || 'mens');
       }
+  });
+
+  window.addEventListener('hashchange', () => {
+      loadStats(localStorage.getItem('league') || 'mens');
   });
 </script>

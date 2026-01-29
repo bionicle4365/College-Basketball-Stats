@@ -1,7 +1,7 @@
 ---
 layout: default
-title: Team Schedule
-permalink: /team/
+title: Schedule
+permalink: /schedule/
 ---
     <style>
         .schedule-container {
@@ -40,8 +40,8 @@ permalink: /team/
         #schedule-content {
             overflow-x: auto;
         }
+        .correct-pick { background-color: #d4edda; }
     </style>
-<body>
     <div class="schedule-container">
         <h2 id="team-name">Schedule</h2>
         <div id="schedule-content">Loading...</div>
@@ -65,7 +65,7 @@ permalink: /team/
                 .then(r => r.json())
                 .then(data => {
                 if (data.team && data.team.athletes) {
-                    data.team.athletes.forEach(p => playerMap[p.id] = p.displayName);
+                    data.team.athletes.forEach(p => playerMap[p.id] = p.shortName || p.displayName);
                 }
                 return fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${SPORT_PATH}/teams/${TEAM_ID}/schedule`);
             })
@@ -116,7 +116,7 @@ permalink: /team/
 
                     const logo = opponent.team.logos && opponent.team.logos.length > 0 ? `<img src="${opponent.team.logos[0].href}" class="team-logo">` : '';
 
-                    html += `<tr onclick="window.location.href='/College-Basketball-Stats/scoreboard?gameId=${game.id}'">
+                    html += `<tr onclick="window.location.href='/College-Basketball-Stats/scoreboard#${game.id}'">
                         <td>${dateStr}</td>
                         <td>${vsAt} ${logo}${opponent.team.shortDisplayName || opponent.team.displayName}</td>
                         <td>${result}</td>
@@ -149,12 +149,14 @@ permalink: /team/
                                     
                                     let maxVal = -Infinity;
                                     let topPlayer = null;
+                                    let topPlayerId = null;
 
                                     athletes.forEach(player => {
                                         const val = calculateVal(player.stats, labels);
                                         if (val > maxVal) {
                                             maxVal = val;
                                             topPlayer = player.athlete ? (player.athlete.shortName || player.athlete.displayName) : player.displayName;
+                                            topPlayerId = player.athlete ? player.athlete.id : null;
                                         }
                                     });
 
@@ -162,7 +164,7 @@ permalink: /team/
                                         const cell = document.getElementById(`val-${game.id}`);
                                         if (cell) {
                                             cell.innerHTML = `<strong>${topPlayer}</strong> (${maxVal})`;
-                                            cell.style.color = '#333';
+                                            cell.style.color = '';
                                         }
                                     }
 
@@ -175,9 +177,12 @@ permalink: /team/
                                                 const val = calculateVal(player.stats, labels);
                                                 const pickCell = document.getElementById(`pick-${game.id}`);
                                                 if (pickCell) {
-                                                    const playerName = player.athlete ? player.athlete.displayName : (playerMap[pickedPlayerId] || 'Unknown');
+                                                    const playerName = player.athlete ? (player.athlete.shortName || player.athlete.displayName) : (playerMap[pickedPlayerId] || 'Unknown');
                                                     pickCell.innerHTML = `<strong>${playerName}</strong> (${val})`;
-                                                    pickCell.style.color = '#333';
+                                                    pickCell.style.color = '';
+                                                    if (topPlayerId && String(pickedPlayerId) === String(topPlayerId)) {
+                                                        pickCell.classList.add('correct-pick');
+                                                    }
                                                 }
                                             }
                                         }
@@ -194,7 +199,7 @@ permalink: /team/
                                         const playerName = playerMap[pickedPlayerId] || 'Unknown';
                                         const valDisplay = (game.status.type.state === 'post') ? ' (0)' : '';
                                         pickCell.innerHTML = `<strong>${playerName}</strong>${valDisplay}`;
-                                        pickCell.style.color = '#333';
+                                        pickCell.style.color = '';
                                     }
                                 }
                             }
@@ -207,5 +212,3 @@ permalink: /team/
             });
         });
     </script>
-</body>
-</html>
