@@ -1,44 +1,37 @@
 ---
-layout: null
+layout: default
 title: Login
 permalink: /login/
 ---
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Login</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #f6f8fa; margin: 0; }
-        .login-card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); text-align: center; width: 300px; }
-        input { width: 100%; padding: 10px; margin: 15px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
-        button { width: 100%; padding: 10px; background-color: #cc0000; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 1em; }
-        button:hover { background-color: #990000; }
-        .error { color: #cc0000; font-size: 0.9em; display: none; margin-top: 10px; }
-        .toggle-link { display: block; margin-top: 15px; font-size: 0.9em; color: #555; cursor: pointer; text-decoration: underline; }
-        .toggle-link:hover { color: #333; }
-        .google-btn { background-color: #4285F4 !important; margin-top: 10px; }
-        .google-btn:hover { background-color: #357ae8 !important; }
-    </style>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
-    <script>
-        const firebaseConfig = {
-            apiKey: "AIzaSyABrOdAazMKC1W6KC0637QKRqJaLhYXYj4",
-            authDomain: "subtle-lambda-485402-j7.firebaseapp.com",
-            projectId: "subtle-lambda-485402-j7",
-            storageBucket: "subtle-lambda-485402-j7.firebasestorage.app",
-            messagingSenderId: "494315015081",
-            appId: "1:494315015081:web:d23e5b5532ff75553152b8",
-            measurementId: "G-DEZV030R84"
-        };
-        firebase.initializeApp(firebaseConfig);
-        const auth = firebase.auth();
+<div class="login-container">
+    <h2 id="form-title" class="login-title">Sign In</h2>
+    <form onsubmit="handleSubmit(event)">
+        <div class="form-group">
+            <input type="email" id="email" placeholder="Enter email" required>
+        </div>
+        <div class="form-group">
+            <input type="password" id="password" placeholder="Enter password" required>
+        </div>
+        <div class="form-group">
+            <input type="password" id="confirm-password" placeholder="Confirm password" style="display: none;">
+        </div>
+        <button type="submit" id="submit-btn" class="btn btn-primary btn-full">Login</button>
+        <button type="button" class="google-btn" onclick="googleLogin()">Sign in with Google</button>
+        <div id="error" class="error-msg">Incorrect password</div>
+        <a id="toggle-text" class="toggle-link" onclick="toggleMode()">Don't have an account? Sign Up</a>
+    </form>
+</div>
 
-        if (localStorage.getItem('isLoggedIn') === 'true') {
+<script>
+    // Redirect if already logged in
+    auth.onAuthStateChanged(user => {
+        if (user) {
+            localStorage.setItem('isLoggedIn', 'true');
+            localStorage.setItem('username', user.displayName || user.email.split('@')[0]);
             window.location.href = '/College-Basketball-Stats/scoreboard';
         }
-        
+    });
+
         let isSignUp = false;
 
         function toggleMode() {
@@ -73,6 +66,12 @@ permalink: /login/
                 .then((result) => {
                     localStorage.setItem('isLoggedIn', 'true');
                     localStorage.setItem('username', result.user.displayName || result.user.email.split('@')[0]);
+                    
+                    // Ensure user settings exist
+                    db.collection('user_settings').doc(result.user.uid).set({
+                        favoriteTeamId: '152' // Default
+                    }, { merge: true });
+
                     window.location.href = '/College-Basketball-Stats/scoreboard';
                 }).catch((error) => {
                     const errorDiv = document.getElementById('error');
@@ -99,6 +98,12 @@ permalink: /login/
                     .then((userCredential) => {
                         localStorage.setItem('isLoggedIn', 'true');
                         localStorage.setItem('username', email.split('@')[0]);
+                        
+                        // Create default settings
+                        db.collection('user_settings').doc(userCredential.user.uid).set({
+                            favoriteTeamId: '152'
+                        });
+
                         window.location.href = '/College-Basketball-Stats/scoreboard';
                     })
                     .catch((err) => {
@@ -118,20 +123,4 @@ permalink: /login/
                     });
             }
         }
-    </script>
-</head>
-<body>
-    <div class="login-card">
-        <h2 id="form-title" style="color: #333; margin-top: 0;">Sign In</h2>
-        <form onsubmit="handleSubmit(event)">
-            <input type="email" id="email" placeholder="Enter email" required>
-            <input type="password" id="password" placeholder="Enter password" required>
-            <input type="password" id="confirm-password" placeholder="Confirm password" style="display: none;">
-            <button type="submit" id="submit-btn">Login</button>
-            <button type="button" class="google-btn" onclick="googleLogin()">Sign in with Google</button>
-            <div id="error" class="error">Incorrect password</div>
-            <a id="toggle-text" class="toggle-link" onclick="toggleMode()">Don't have an account? Sign Up</a>
-        </form>
-    </div>
-</body>
-</html>
+</script>

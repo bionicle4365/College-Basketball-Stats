@@ -3,45 +3,6 @@ layout: default
 title: Schedule
 permalink: /schedule/
 ---
-    <style>
-        .schedule-container {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            max-width: 800px;
-            margin: 20px auto;
-            padding: 20px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .schedule-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 15px;
-        }
-        .schedule-table th, .schedule-table td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #eee;
-        }
-        .schedule-table th {
-            background-color: #f8f9fa;
-            font-weight: bold;
-            color: #333;
-        }
-        .schedule-table tbody tr {
-            cursor: pointer;
-        }
-        .schedule-table tbody tr:hover {
-            background-color: #f5f5f5;
-        }
-        .win { color: green; font-weight: bold; }
-        .loss { color: #cc0000; font-weight: bold; }
-        .team-logo { width: 24px; height: 24px; vertical-align: middle; margin-right: 8px; }
-        #schedule-content {
-            overflow-x: auto;
-        }
-        .correct-pick { background-color: #d4edda; }
-    </style>
     <div class="schedule-container">
         <h2 id="team-name">Schedule</h2>
         <div id="schedule-content">Loading...</div>
@@ -49,10 +10,10 @@ permalink: /schedule/
     <script>
         checkAuth();
 
-        const TEAM_ID = localStorage.getItem('favoriteTeamId') || '152';
-        const LEAGUE = localStorage.getItem('league') || 'mens';
-        const SPORT_PATH = LEAGUE === 'womens' ? 'womens-college-basketball' : 'mens-college-basketball';
-        const COLLECTION_NAME = `${TEAM_ID}${LEAGUE === 'mens' ? 'm' : 'w'}`;
+        const TEAM_ID = getFavoriteTeamId();
+        const LEAGUE = getLeague();
+        const SPORT_PATH = getSportPath();
+        const COLLECTION_NAME = getCollectionName(TEAM_ID, LEAGUE);
         let USER_UID = null
         let playerMap = {};
 
@@ -114,7 +75,7 @@ permalink: /schedule/
                          result = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
                     }
 
-                    const logo = opponent.team.logos && opponent.team.logos.length > 0 ? `<img src="${opponent.team.logos[0].href}" class="team-logo">` : '';
+                    const logo = getTeamLogoHtml(opponent.team);
 
                     html += `<tr onclick="window.location.href='/College-Basketball-Stats/scoreboard#${game.id}'">
                         <td>${dateStr}</td>

@@ -3,34 +3,12 @@ layout: default
 title: Settings
 permalink: /settings/
 ---
-<style>
-    .settings-container {
-        padding: 20px;
-        max-width: 600px;
-        margin: 0 auto;
-        background: white;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    #teams-dropdown {
-        display: none;
-        position: absolute;
-        top: 100%;
-        left: 0;
-        right: 0;
-        background: white;
-        border: 1px solid #ddd;
-        border-radius: 0 0 4px 4px;
-        max-height: 200px;
-        overflow-y: auto;
-        z-index: 1000;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }
-    .team-option { padding: 10px; cursor: pointer; border-bottom: 1px solid #eee; }
-    .team-option:hover { background-color: #f0f0f0; }
-</style>
 <div class="settings-container">
     <h2 style="margin-top: 0;">Settings</h2>
+    <div class="form-group">
+        <label for="display-name" style="display: block; margin-bottom: 5px; font-weight: bold;">Display Name:</label>
+        <input type="text" id="display-name" placeholder="Enter your display name" autocomplete="off" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box;">
+    </div>
     <div class="form-group">
         <label for="team-select" style="display: block; margin-bottom: 5px; font-weight: bold;">Default Team:</label>
         <div style="position: relative;">
@@ -59,19 +37,25 @@ permalink: /settings/
                 auth.onAuthStateChanged(user => {
                     if (user) {
                         db.collection('user_settings').doc(user.uid).get().then(doc => {
-                            if (doc.exists && doc.data().favoriteTeamId) {
-                                const teamId = doc.data().favoriteTeamId;
-                                const team = teamsData.find(t => t.id === teamId);
-                                if (team) teamInput.value = team.displayName;
-                                localStorage.setItem('favoriteTeamId', teamId);
+                            if (doc.exists) {
+                                const data = doc.data();
+                                if (data.favoriteTeamId) {
+                                    const team = teamsData.find(t => t.id === data.favoriteTeamId);
+                                    if (team) teamInput.value = team.displayName;
+                                    localStorage.setItem('favoriteTeamId', data.favoriteTeamId);
+                                }
+                                if (data.displayName) {
+                                    document.getElementById('display-name').value = data.displayName;
+                                }
                             }
                         });
                     } else {
-                        const currentTeamId = localStorage.getItem('favoriteTeamId');
+                        const currentTeamId = getFavoriteTeamId();
                         if (currentTeamId) {
                             const currentTeam = teamsData.find(t => t.id === currentTeamId);
                             if (currentTeam) teamInput.value = currentTeam.displayName;
                         }
+                        document.getElementById('display-name').value = localStorage.getItem('displayName') || '';
                     }
                 });
             }
@@ -112,15 +96,18 @@ permalink: /settings/
     function saveSettings() {
         const selectedName = teamInput.value;
         const selectedTeam = teamsData.find(t => t.displayName === selectedName);
+        const displayName = document.getElementById('display-name').value.trim();
         const msg = document.getElementById('message');
         
         if (selectedTeam) {
             const user = auth.currentUser;
             if (user) {
                 db.collection('user_settings').doc(user.uid).set({
-                    favoriteTeamId: selectedTeam.id
+                    favoriteTeamId: selectedTeam.id,
+                    displayName: displayName
                 }, { merge: true }).then(() => {
                     localStorage.setItem('favoriteTeamId', selectedTeam.id);
+                    localStorage.setItem('displayName', displayName);
                     msg.textContent = 'Settings saved! Redirecting to team page...';
                     msg.style.backgroundColor = '#d4edda';
                     msg.style.color = '#155724';
@@ -129,6 +116,7 @@ permalink: /settings/
                 });
             } else {
                 localStorage.setItem('favoriteTeamId', selectedTeam.id);
+                localStorage.setItem('displayName', displayName);
                 msg.textContent = 'Settings saved locally! Redirecting to team page...';
                 msg.style.backgroundColor = '#d4edda';
                 msg.style.color = '#155724';

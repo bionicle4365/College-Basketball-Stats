@@ -3,69 +3,20 @@ layout: default
 title: Groups
 permalink: /groups/
 ---
-    <style>
-        .groups-container {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            max-width: 800px;
-            margin: 20px auto;
-            padding: 20px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .section { margin-bottom: 30px; }
-        .group-card {
-            border: 1px solid #eee;
-            padding: 15px;
-            margin-bottom: 10px;
-            border-radius: 6px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .group-name { font-weight: bold; font-size: 1.1em; }
-        .btn {
-            padding: 8px 16px;
-            border-radius: 4px;
-            border: none;
-            cursor: pointer;
-            font-weight: bold;
-        }
-        .btn-primary { background-color: #cc0000; color: white; }
-        .btn-secondary { background-color: #eee; color: #333; }
-        .input-group { display: flex; gap: 10px; margin-bottom: 15px; }
-        .input-group input {
-            flex: 1;
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-        .leaderboard-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 10px;
-        }
-        .leaderboard-table th, .leaderboard-table td {
-            padding: 8px;
-            text-align: left;
-            border-bottom: 1px solid #eee;
-        }
-        .loading { color: #666; font-style: italic; }
-    </style>
     <div class="groups-container">
         <div id="groups-main-view">
             <h2>Groups</h2>
             
             <div class="section">
                 <h3>Create Group</h3>
-                <div class="input-group">
-                    <input type="text" id="new-group-name" placeholder="Enter group name">
+                <form class="input-group" onsubmit="event.preventDefault(); createGroup()">
+                    <input type="text" id="new-group-name" placeholder="Enter group name" autocomplete="off">
                     <label style="display: flex; align-items: center; gap: 5px; white-space: nowrap;">
                         <input type="checkbox" id="new-group-private" onchange="togglePasswordInput()"> Private
                     </label>
-                    <input type="password" id="new-group-password" placeholder="Password" style="display:none;">
-                    <button class="btn btn-primary" onclick="createGroup()">Create</button>
-                </div>
+                    <input type="password" id="new-group-password" placeholder="Password" style="display:none;" autocomplete="new-password">
+                    <button type="submit" class="btn btn-primary">Create</button>
+                </form>
             </div>
 
             <div class="section">
@@ -91,9 +42,9 @@ permalink: /groups/
     </div>
 
     <script>
-        const TEAM_ID = localStorage.getItem('favoriteTeamId') || '152';
-        const LEAGUE = localStorage.getItem('league') || 'mens';
-        const SPORT_PATH = LEAGUE === 'womens' ? 'womens-college-basketball' : 'mens-college-basketball';
+        const TEAM_ID = getFavoriteTeamId();
+        const LEAGUE = getLeague();
+        const SPORT_PATH = getSportPath();
         let USER_UID = null;
 
         auth.onAuthStateChanged(user => {
@@ -268,14 +219,14 @@ permalink: /groups/
         async function renderLeaderboard(container, members) {
             
             try {
-                const scheduleResp = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${SPORT_PATH}/teams/${TEAM_ID}/schedule`);
+                const scheduleResp = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${getSportPath()}/teams/${TEAM_ID}/schedule`);
                 const scheduleData = await scheduleResp.json();
                 const completedGames = (scheduleData.events || []).filter(e => e.competitions[0].status.type.state === 'post');
 
                 const scores = {};
                 members.forEach(m => scores[m] = 0);
 
-                const collectionName = `${TEAM_ID}${LEAGUE === 'mens' ? 'm' : 'w'}`;
+                const collectionName = getCollectionName(TEAM_ID, LEAGUE);
 
                 const gamePromises = completedGames.map(async (event) => {
                     const gameId = event.id;
@@ -283,7 +234,7 @@ permalink: /groups/
                     if (!pickDoc || !pickDoc.exists) return;
                     const picks = pickDoc.data();
 
-                    const summaryResp = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${SPORT_PATH}/summary?event=${gameId}`);
+                    const summaryResp = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${getSportPath()}/summary?event=${gameId}`);
                     const summary = await summaryResp.json();
                     if (!summary.boxscore || !summary.boxscore.players) return;
                     

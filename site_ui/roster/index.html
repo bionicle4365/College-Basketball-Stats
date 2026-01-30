@@ -3,50 +3,6 @@ layout: default
 title: Roster Stats
 permalink: /roster/
 ---
-    <style>
-        .roster-container {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            max-width: 1000px;
-            margin: 20px auto;
-            padding: 20px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .roster-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 15px;
-            font-size: 0.9em;
-        }
-        .roster-table th, .roster-table td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid #eee;
-        }
-        .roster-table th {
-            background-color: #f8f9fa;
-            font-weight: bold;
-            color: #333;
-            cursor: pointer;
-        }
-        .roster-table tr.player-row:hover {
-            background-color: #f5f5f5;
-        }
-        .headshot {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            vertical-align: middle;
-            margin-right: 10px;
-            object-fit: cover;
-            background-color: #eee;
-        }
-        .loading { text-align: center; padding: 20px; color: #666; }
-        .chart-container { position: relative; height: 200px; width: 100%; margin-top: 20px; }
-        .stats-row { background-color: #f8f9fa; }
-        body.dark-mode .stats-row { background-color: #2d2d2d; color: #e0e0e0; }
-    </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <div class="roster-container">
         <h2 id="team-name">Team Roster & Stats</h2>
@@ -60,9 +16,9 @@ permalink: /roster/
             window.location.href = '/College-Basketball-Stats/login';
         }
 
-        const TEAM_ID = localStorage.getItem('favoriteTeamId') || '152';
-        const LEAGUE = localStorage.getItem('league') || 'mens';
-        const SPORT_PATH = LEAGUE === 'womens' ? 'womens-college-basketball' : 'mens-college-basketball';
+        const TEAM_ID = getFavoriteTeamId();
+        const LEAGUE = getLeague();
+        const SPORT_PATH = getSportPath();
         const chartInstances = {};
 
         let teamSchedule = [];
@@ -172,27 +128,7 @@ permalink: /roster/
                                             const evt = playerStatsMap[game.id];
 
                                             if (evt && evt.stats) {
-                                                const stats = evt.stats;
-                                                const getStat = (key) => {
-                                                    const idx = labels.indexOf(key);
-                                                    return idx > -1 ? (stats[idx] || '0') : '0';
-                                                };
-                                                const parseMA = (val) => {
-                                                    const parts = val.split('-');
-                                                    return { m: parseInt(parts[0]) || 0, a: parseInt(parts[1]) || 0 };
-                                                };
-
-                                                const pts = parseInt(getStat('PTS')) || 0;
-                                                const fg = parseMA(getStat('FG'));
-                                                const threePt = parseMA(getStat('3PT'));
-                                                const ft = parseMA(getStat('FT'));
-                                                const reb = parseInt(getStat('REB')) || 0;
-                                                const ast = parseInt(getStat('AST')) || 0;
-                                                const stl = parseInt(getStat('STL')) || 0;
-                                                const blk = parseInt(getStat('BLK')) || 0;
-                                                const tov = parseInt(getStat('TO')) || 0;
-
-                                                val = pts + threePt.m - fg.a + (fg.m * 2) - ft.a + ft.m + reb + (ast * 2) + (stl * 4) + (blk * 4) - (tov * 2);
+                                                val = calculateVal(evt.stats, labels);
                                             }
                                             valData.push(val);
                                         });

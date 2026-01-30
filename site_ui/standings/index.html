@@ -1,0 +1,103 @@
+---
+layout: default
+title: Standings
+permalink: /standings/
+---
+<div class="standings-container">
+    <h2 id="conf-name">Conference Standings</h2>
+    <div id="standings-content">
+        <div class="loading">Loading standings...</div>
+    </div>
+</div>
+
+<script>
+    const TEAM_ID = getFavoriteTeamId();
+    const SPORT_PATH = getSportPath();
+    let targetGroupId = null;
+
+    // 1. Fetch Team Data to get Conference ID
+    fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${SPORT_PATH}/teams/${TEAM_ID}`)
+        .then(r => r.json())
+        .then(data => {
+            const groups = data.team.groups;
+            let groupId = null;
+            
+            // Find the conference group ID
+            if (groups) {
+                if (groups.isConference) {
+                    groupId = groups.id;
+                } else if (Array.isArray(groups)) {
+                    const conf = groups.find(g => g.isConference);
+                    groupId = conf ? conf.id : groups[0].id;
+                }
+            }
+
+            if (!groupId) throw new Error("Conference not found");
+            targetGroupId = groupId;
+
+            // 2. Fetch Standings for that Group
+            return fetch(`https://site.api.espn.com/apis/v2/sports/basketball/${SPORT_PATH}/standings?group=${groupId}`);
+        })
+        .then(r => r.json())
+        .then(data => {
+            document.getElementById('conf-name').textContent = data.name || 'Conference Standings';
+            
+            let html = `<table class="standings-table">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Team</th>
+                        <th>Conf</th>
+                        <th>Overall</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+            
+            let standings = [];
+            if (data.standings && data.standings.entries) {
+                standings = data.standings.entries;
+            } else if (Array.isArray(data.standings)) {
+                standings = data.standings;
+            } else if (data.children) {
+                const groupData = data.children.find(c => String(c.id) === String(targetGroupId)) || data.children[0];
+                if (groupData && groupData.standings && groupData.standings.entries) {
+                    standings = groupData.standings.entries;
+                    if (groupData.name) {
+                        document.getElementById('conf-name').textContent = groupData.name;
+                    }
+                }
+            }
+            
+            standings.sort((a, b) => {
+                const getRank = (entry) => {
+                    const r = entry.stats.find(s => s.type === 'playoffseed');
+                    return r ? parseFloat(r.value) : 999;
+                };
+                return getRank(a) - getRank(b);
+            });
+
+            standings.forEach((entry, index) => {
+                const team = entry.team;
+                const stats = entry.stats;
+                const apRank = team.rank || '';
+                const confRank = stats.find(r => r.type === 'playoffseed')
+                const isMyTeam = String(team.id) === String(TEAM_ID);
+                const confRecord = stats.find(r => r.type === 'vsconf') || { summary: '-' };
+                const overallRecord = stats.find(r => r.type === 'total') || { summary: '-' };
+
+                html += `<tr class="${isMyTeam ? 'highlight-team' : ''}">
+                    <td>${confRank.displayValue}</td>
+                    <td>${getTeamLogoHtml(team)} ${apRank} ${team.shortDisplayName}</td>
+                    <td>${confRecord.summary}</td>
+                    <td>${overallRecord.summary}</td>
+                </tr>`;
+            });
+
+            html += '</tbody></table>';
+            document.getElementById('standings-content').innerHTML = html;
+        })
+        .catch(err => {
+            console.error(err);
+            document.getElementById('standings-content').innerHTML = '<div class="error">Failed to load standings.</div>';
+        });
+</script>

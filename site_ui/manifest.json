@@ -1,0 +1,9 @@
+{
+  "name": "College Basketball Stats",
+  "short_name": "CBB Stats",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f6f8fa",
+  "theme_color": "#333333",
+  "icons": []
+}
