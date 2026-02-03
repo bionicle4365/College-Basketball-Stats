@@ -47,7 +47,7 @@ function getCollectionName(teamId, league) {
 }
 
 function getTeamLogoHtml(team) {
-    const logoLight = team.logos?.[0]?.href || '';
+    const logoLight = team.logos?.[0]?.href || team.logo;
     const logoDark = team.logos?.[1]?.href || logoLight;
     return `<img src="${logoLight}" class="team-logo logo-light" alt=""><img src="${logoDark}" class="team-logo logo-dark" alt="">`;
 }
