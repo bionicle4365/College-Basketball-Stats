@@ -226,6 +226,24 @@ permalink: /scoreboard/
       return (rank && rank <= 25) ? `#${rank} ` : '';
     };
 
+    const getRecord = (c) => {
+      const recs = c.records || c.record;
+      if (!recs || !Array.isArray(recs) || recs.length === 0) return '';
+      
+      const totalRecord = recs.find(r => r.type === 'total');
+      const confRecord = recs.find(r => r.type === 'vsconf');
+
+      const parts = [];
+      if (totalRecord && totalRecord.summary) {
+          parts.push(totalRecord.summary);
+      }
+      if (confRecord && confRecord.summary) {
+          parts.push(`(${confRecord.summary} Conf)`);
+      }
+
+      return parts.length > 0 ? parts.join(' ') : (recs[0]?.summary || '');
+    };
+
     const display = document.getElementById('game-display');
     
     display.innerHTML = `
@@ -234,12 +252,14 @@ permalink: /scoreboard/
         <div class="team">
           ${getTeamLogoHtml(selectedTeam.team)}
           <span class="team-name">${getRank(selectedTeam)}${selectedTeam.team.shortDisplayName || selectedTeam.team.nickname || selectedTeam.team.displayName}</span>
+          <div class="team-record">${getRecord(selectedTeam)}</div>
           <div class="team-score">${selectedTeam.score || 0}</div>
         </div>
         <div class="vs">VS</div>
         <div class="team">
           ${getTeamLogoHtml(opponent.team)}
           <span class="team-name">${getRank(opponent)}${opponent.team.shortDisplayName || opponent.team.nickname || opponent.team.displayName}</span>
+          <div class="team-record">${getRecord(opponent)}</div>
           <div class="team-score">${opponent.score || 0}</div>
         </div>
       </div>
@@ -283,7 +303,7 @@ permalink: /scoreboard/
       }
       return `<div class="leaders" style="text-align:center; margin-top:15px;">
         <p>Game has not started.</p>
-        <p>${team1.team.abbreviation}: ${team1.records?.[0]?.summary || 'N/A'} | ${team2.team.abbreviation}: ${team2.records?.[0]?.summary || 'N/A'}</p>
+        <p>${team1.team.abbreviation}: ${(team1.records || team1.record)?.[0]?.summary || 'N/A'} | ${team2.team.abbreviation}: ${(team2.records || team2.record)?.[0]?.summary || 'N/A'}</p>
       </div>`;
     }
 
@@ -406,11 +426,7 @@ permalink: /scoreboard/
       return `<button class="${activeClass}" onclick="toggleTeamStats(${index}, this)">${teamName}</button>`;
     }).join('');
 
-    const formulaHtml = `<div style="margin-top: 15px; font-size: 0.8em; color: #888; text-align: center;">
-      VAL = PTS + 3PM - FGA + (FGM * 2) - FTA + FTM + REB + (AST * 2) + (STL * 4) + (BLK * 4) - (TO * 2)
-    </div>`;
-
-    return `<div class="controls" style="margin-top: 10px; margin-bottom: 10px;"><div class="btn-group">${toggleButtons}</div></div>` + teamHtmls.join('') + formulaHtml;
+    return `<div class="controls" style="margin-top: 10px; margin-bottom: 10px;"><div class="btn-group">${toggleButtons}</div></div>` + teamHtmls.join('');
   }
 
   // Load Men's stats by default on page load

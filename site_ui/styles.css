@@ -82,6 +82,7 @@ body.dark-mode #search-results div:hover { background-color: #333 !important; }
 
 /* Dark Mode Text Visibility Fixes */
 body.dark-mode .team-score { color: #e0e0e0 !important; }
+body.dark-mode .team-record { color: #aaa; }
 body.dark-mode .correct-pick, 
 body.dark-mode .picked-row { 
     background-color: #1b3a1e !important; 
@@ -145,6 +146,7 @@ body.dark-mode .stats-row { background-color: #2d2d2d; color: #e0e0e0; }
 .team { flex: 1; }
 .score-board .team-logo { width: 50px; height: 50px; margin-bottom: 10px; margin-right: 0; }
 .team-name { font-weight: bold; display: block; margin-bottom: 5px; }
+.team-record { font-size: 0.9em; color: #666; margin-bottom: 5px; }
 .team-score { font-size: 2.5em; font-weight: bold; color: #333; }
 .vs { color: #999; font-size: 0.9em; margin: 0 10px; }
 .game-info { border-top: 1px solid #eee; padding-top: 15px; font-size: 1.0em; color: #555; }
