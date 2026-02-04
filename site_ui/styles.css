@@ -196,3 +196,11 @@ body.dark-mode .toggle-link:hover { color: #fff; }
 body.dark-mode .standings-container { background-color: #1e1e1e; color: #e0e0e0; border: 1px solid #333; }
 body.dark-mode .standings-table th { background-color: #2d2d2d; color: #e0e0e0; border-bottom-color: #444; }
 body.dark-mode .standings-table tr.highlight-team { background-color: #1b3a1e; color: #e0e0e0; }
+
+/* Modal Styles */
+.modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center; }
+.modal-box { background: white; padding: 20px; border-radius: 8px; max-width: 90%; width: 400px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); position: relative; }
+.modal-close { position: absolute; top: 10px; right: 15px; font-size: 1.5rem; cursor: pointer; color: #666; line-height: 1; }
+.modal-body { white-space: pre-wrap; font-family: monospace; font-size: 0.9em; line-height: 1.4; margin-top: 10px; }
+body.dark-mode .modal-box { background-color: #1e1e1e; color: #e0e0e0; border: 1px solid #333; }
+body.dark-mode .modal-close { color: #aaa; }
