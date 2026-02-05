@@ -199,6 +199,24 @@ permalink: /scoreboard/
       });
   }
 
+  function getRecord(c) {
+      const recs = c.records || c.record;
+      if (!recs || !Array.isArray(recs) || recs.length === 0) return '';
+      
+      const totalRecord = recs.find(r => r.type === 'total');
+      const confRecord = recs.find(r => r.type === 'vsconf');
+
+      const parts = [];
+      if (totalRecord && totalRecord.summary) {
+          parts.push(totalRecord.summary);
+      }
+      if (confRecord && confRecord.summary) {
+          parts.push(`(${confRecord.summary} Conf)`);
+      }
+
+      return parts.length > 0 ? parts.join(' ') : (recs[0]?.summary || '');
+  }
+
   function renderGame(event, summaryData, nextGame, pickedPlayerId, rosterData) {
     const competition = event.competitions[0];
     const statusObj = event.status || competition.status;
@@ -207,8 +225,10 @@ permalink: /scoreboard/
     const weather = event.weather || (summaryData && summaryData.gameInfo && summaryData.gameInfo.weather);
     
     // Identify Home and Away
-    const selectedTeam = competition.competitors.find(c => c.team.id == TEAM_ID);
-    const opponent = competition.competitors.find(c => c.team.id != TEAM_ID);
+    const homeTeam = competition.competitors.find(c => c.homeAway === 'home');
+    const awayTeam = competition.competitors.find(c => c.homeAway === 'away');
+    const selectedTeam = competition.competitors.find(c => c.team.id == TEAM_ID) || homeTeam;
+    const opponent = competition.competitors.find(c => c.team.id != TEAM_ID) || awayTeam;
 
     let nextGameHtml = '';
     if (nextGame) {
@@ -226,41 +246,23 @@ permalink: /scoreboard/
       return (rank && rank <= 25) ? `#${rank} ` : '';
     };
 
-    const getRecord = (c) => {
-      const recs = c.records || c.record;
-      if (!recs || !Array.isArray(recs) || recs.length === 0) return '';
-      
-      const totalRecord = recs.find(r => r.type === 'total');
-      const confRecord = recs.find(r => r.type === 'vsconf');
-
-      const parts = [];
-      if (totalRecord && totalRecord.summary) {
-          parts.push(totalRecord.summary);
-      }
-      if (confRecord && confRecord.summary) {
-          parts.push(`(${confRecord.summary} Conf)`);
-      }
-
-      return parts.length > 0 ? parts.join(' ') : (recs[0]?.summary || '');
-    };
-
     const display = document.getElementById('game-display');
     
     display.innerHTML = `
       <div class="status">${status}</div>
       <div class="score-board">
         <div class="team">
-          ${getTeamLogoHtml(selectedTeam.team)}
-          <span class="team-name">${getRank(selectedTeam)}${selectedTeam.team.shortDisplayName || selectedTeam.team.nickname || selectedTeam.team.displayName}</span>
-          <div class="team-record">${getRecord(selectedTeam)}</div>
-          <div class="team-score">${selectedTeam.score || 0}</div>
+          ${getTeamLogoHtml(awayTeam.team)}
+          <span class="team-name">${getRank(awayTeam)}${awayTeam.team.shortDisplayName || awayTeam.team.nickname || awayTeam.team.displayName}</span>
+          <div class="team-record">${getRecord(awayTeam)}</div>
+          <div class="team-score">${awayTeam.score || 0}</div>
         </div>
         <div class="vs">VS</div>
         <div class="team">
-          ${getTeamLogoHtml(opponent.team)}
-          <span class="team-name">${getRank(opponent)}${opponent.team.shortDisplayName || opponent.team.nickname || opponent.team.displayName}</span>
-          <div class="team-record">${getRecord(opponent)}</div>
-          <div class="team-score">${opponent.score || 0}</div>
+          ${getTeamLogoHtml(homeTeam.team)}
+          <span class="team-name">${getRank(homeTeam)}${homeTeam.team.shortDisplayName || homeTeam.team.nickname || homeTeam.team.displayName}</span>
+          <div class="team-record">${getRecord(homeTeam)}</div>
+          <div class="team-score">${homeTeam.score || 0}</div>
         </div>
       </div>
       ${nextGameHtml}
@@ -303,7 +305,7 @@ permalink: /scoreboard/
       }
       return `<div class="leaders" style="text-align:center; margin-top:15px;">
         <p>Game has not started.</p>
-        <p>${team1.team.abbreviation}: ${(team1.records || team1.record)?.[0]?.summary || 'N/A'} | ${team2.team.abbreviation}: ${(team2.records || team2.record)?.[0]?.summary || 'N/A'}</p>
+        <p>${team1.team.abbreviation}: ${getRecord(team1) || 'N/A'} | ${team2.team.abbreviation}: ${getRecord(team2) || 'N/A'}</p>
       </div>`;
     }
 

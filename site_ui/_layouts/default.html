@@ -13,6 +13,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     {% if jekyll.environment == "development" %}
     <script src="{{ site.baseurl }}/common.local.js"></script>
+    <script>console.log("Debug Mode: Using common.local.js");</script>
     {% else %}
     <script src="{{ site.baseurl }}/common.js"></script>
     {% endif %}
@@ -280,7 +281,11 @@
 
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
+                {% if jekyll.environment == "development" %}
+                console.log('Service Worker skipped in development mode.');
+                {% else %}
                 navigator.serviceWorker.register('{{ site.baseurl }}/sw.js');
+                {% endif %}
             });
         }
     </script>
