@@ -25,9 +25,10 @@ permalink: /settings/
     const teamsDropdown = document.getElementById('teams-dropdown');
     const teamInput = document.getElementById('team-select');
     let teamsData = [];
+    const sportPath = getSportPath();
 
-    // Fetch teams from ESPN API
-    fetch('https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/teams?limit=1000')
+    // Fetch teams from ESPN API dynamically according to active league
+    fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${sportPath}/teams?limit=1000`)
         .then(response => response.json())
         .then(data => {
             if (data.sports && data.sports[0].leagues && data.sports[0].leagues[0].teams) {
@@ -69,12 +70,14 @@ permalink: /settings/
             return;
         }
         
-        const matches = teamsData.filter(t => t.displayName.toLowerCase().includes(val));
+        const matches = teamsData.filter(t => t.displayName.toLowerCase().includes(val) || (t.nickname && t.nickname.toLowerCase().includes(val)));
         if (matches.length > 0) {
-            matches.forEach(team => {
+            matches.slice(0, 15).forEach(team => {
                 const div = document.createElement('div');
                 div.className = 'team-option';
-                div.textContent = team.displayName;
+                const logoUrl = team.logos?.[0]?.href || team.logo || '';
+                const logoImg = logoUrl ? `<img src="${escapeHtml(logoUrl)}" width="20" height="20" style="margin-right: 8px; vertical-align: middle;">` : '';
+                div.innerHTML = `${logoImg}<span>${escapeHtml(team.displayName)}</span>`;
                 div.onclick = () => {
                     teamInput.value = team.displayName;
                     teamsDropdown.style.display = 'none';
@@ -108,20 +111,20 @@ permalink: /settings/
                 }, { merge: true }).then(() => {
                     localStorage.setItem('favoriteTeamId', selectedTeam.id);
                     localStorage.setItem('displayName', displayName);
-                    msg.textContent = 'Settings saved! Redirecting to team page...';
+                    msg.textContent = 'Settings saved! Redirecting to scoreboard...';
                     msg.style.backgroundColor = '#d4edda';
                     msg.style.color = '#155724';
                     msg.style.display = 'block';
-                    setTimeout(() => window.location.href = '/College-Basketball-Stats/team', 1500);
+                    setTimeout(() => window.location.href = '/College-Basketball-Stats/scoreboard', 1200);
                 });
             } else {
                 localStorage.setItem('favoriteTeamId', selectedTeam.id);
                 localStorage.setItem('displayName', displayName);
-                msg.textContent = 'Settings saved locally! Redirecting to team page...';
+                msg.textContent = 'Settings saved locally! Redirecting to scoreboard...';
                 msg.style.backgroundColor = '#d4edda';
                 msg.style.color = '#155724';
                 msg.style.display = 'block';
-                setTimeout(() => window.location.href = '/College-Basketball-Stats/team', 1500);
+                setTimeout(() => window.location.href = '/College-Basketball-Stats/scoreboard', 1200);
             }
         } else {
             msg.textContent = 'Please select a valid team from the list.';

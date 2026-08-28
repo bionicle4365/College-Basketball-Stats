@@ -199,10 +199,97 @@ body.dark-mode .standings-container { background-color: #1e1e1e; color: #e0e0e0;
 body.dark-mode .standings-table th { background-color: #2d2d2d; color: #e0e0e0; border-bottom-color: #444; }
 body.dark-mode .standings-table tr.highlight-team { background-color: #1b3a1e; color: #e0e0e0; }
 
-/* Modal Styles */
+/* Live Scoreboard Enhancements */
+.live-status-container { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 12px; }
+.live-badge { display: inline-flex; align-items: center; gap: 6px; background-color: #ffebee; color: #cc0000; font-weight: bold; font-size: 0.85rem; padding: 4px 10px; border-radius: 12px; border: 1px solid #ffcdd2; }
+.live-pulse { width: 8px; height: 8px; background-color: #cc0000; border-radius: 50%; display: inline-block; animation: live-pulse-anim 1.5s infinite; }
+@keyframes live-pulse-anim {
+    0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(204, 0, 0, 0.7); }
+    70% { transform: scale(1.1); box-shadow: 0 0 0 8px rgba(204, 0, 0, 0); }
+    100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(204, 0, 0, 0); }
+}
+.live-clock-detail { font-weight: bold; font-size: 0.95rem; color: #333; }
+.live-refresh-btn { background: #f0f0f0; border: 1px solid #ccc; border-radius: 4px; padding: 3px 8px; font-size: 0.8rem; cursor: pointer; color: #444; font-weight: 500; }
+.live-refresh-btn:hover { background: #e0e0e0; }
+
+.linescores-wrapper { margin: 15px auto; max-width: 400px; overflow-x: auto; }
+.linescore-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; text-align: center; }
+.linescore-table th { background: #f1f3f5; padding: 4px 8px; font-weight: 600; border-bottom: 1px solid #ddd; }
+.linescore-table td { padding: 5px 8px; border-bottom: 1px solid #eee; }
+
+.last-play-card { background: #f8f9fa; border: 1px solid #e9ecef; border-left: 4px solid #cc0000; padding: 8px 12px; margin: 12px auto; max-width: 500px; border-radius: 4px; font-size: 0.85rem; text-align: left; }
+.last-play-badge { font-weight: bold; color: #cc0000; margin-right: 6px; text-transform: uppercase; font-size: 0.75rem; }
+.last-play-text { color: #495057; }
+
+/* Enhanced Groups Page */
+.group-header-card { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; background: #fff; padding: 15px 20px; border-radius: 8px; border: 1px solid #eee; margin-bottom: 20px; }
+.group-meta { display: flex; align-items: center; gap: 12px; }
+.group-team-badge { width: 38px; height: 38px; object-fit: contain; }
+.group-badge-pill { background: #eee; font-size: 0.75rem; font-weight: bold; padding: 2px 8px; border-radius: 10px; color: #555; }
+
+.group-stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.group-stat-card { background: #fdfdfd; border: 1px solid #eef0f2; border-radius: 8px; padding: 12px 16px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.03); }
+.group-stat-title { font-size: 0.8rem; font-weight: bold; text-transform: uppercase; color: #777; margin-bottom: 4px; }
+.group-stat-value { font-size: 1.25rem; font-weight: bold; color: #cc0000; }
+.group-stat-sub { font-size: 0.78rem; color: #888; margin-top: 2px; }
+
+.group-tabs { display: flex; border-bottom: 2px solid #e9ecef; margin-bottom: 15px; gap: 5px; }
+.group-tab-btn { background: none; border: none; padding: 8px 16px; font-weight: bold; font-size: 0.95rem; color: #6c757d; cursor: pointer; border-bottom: 3px solid transparent; margin-bottom: -2px; }
+.group-tab-btn.active { color: #cc0000; border-bottom-color: #cc0000; }
+
+.rank-badge { display: inline-flex; justify-content: center; align-items: center; width: 24px; height: 24px; border-radius: 50%; font-weight: bold; font-size: 0.85rem; }
+.rank-1 { background-color: #ffd700; color: #5c4300; }
+.rank-2 { background-color: #c0c0c0; color: #333; }
+.rank-3 { background-color: #cd7f32; color: #fff; }
+.user-cell { display: flex; align-items: center; gap: 8px; }
+.user-avatar { width: 26px; height: 26px; border-radius: 50%; background: #e0e0e0; display: inline-flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: bold; color: #555; }
+.user-you-tag { font-size: 0.75rem; background: #e8f5e9; color: #2e7d32; padding: 1px 6px; border-radius: 4px; font-weight: bold; margin-left: 4px; }
+
+.trend-container { display: flex; gap: 4px; justify-content: center; }
+.trend-pill { font-size: 0.75rem; padding: 2px 5px; border-radius: 4px; font-weight: bold; background: #f0f0f0; color: #555; white-space: nowrap; }
+.trend-top { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+.trend-normal { background: #f8f9fa; color: #495057; border: 1px solid #dee2e6; }
+.trend-none { background: #f5f5f5; color: #bbb; border: 1px solid #eee; }
+
+.clickable-row { cursor: pointer; transition: background 0.15s ease-in-out; }
+.clickable-row:hover { background-color: #f8f9fa; }
+
+/* Member Pick Breakdown Modal */
 .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center; }
-.modal-box { background: white; padding: 20px; border-radius: 8px; max-width: 90%; width: 400px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); position: relative; }
+.modal-box { background: white; padding: 20px; border-radius: 8px; max-width: 90%; width: 550px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); position: relative; max-height: 85vh; overflow-y: auto; }
 .modal-close { position: absolute; top: 10px; right: 15px; font-size: 1.5rem; cursor: pointer; color: #666; line-height: 1; }
-.modal-body { white-space: pre-wrap; font-family: monospace; font-size: 0.9em; line-height: 1.4; margin-top: 10px; }
+.modal-body { font-size: 0.9em; line-height: 1.4; margin-top: 10px; }
+
+.game-matrix-table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.85rem; }
+.game-matrix-table th, .game-matrix-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #eee; }
+.game-matrix-table th { background-color: #f8f9fa; font-weight: bold; color: #495057; }
+
+/* Dark Mode Additions */
+body.dark-mode .live-badge { background-color: #3b1111; color: #ff8a80; border-color: #611818; }
+body.dark-mode .live-clock-detail { color: #e0e0e0; }
+body.dark-mode .live-refresh-btn { background: #2d2d2d; border-color: #444; color: #e0e0e0; }
+body.dark-mode .live-refresh-btn:hover { background: #3d3d3d; }
+body.dark-mode .linescore-table th { background: #2d2d2d; color: #e0e0e0; border-color: #444; }
+body.dark-mode .linescore-table td { border-color: #333; color: #e0e0e0; }
+body.dark-mode .last-play-card { background: #1f1f1f; border-color: #333; border-left-color: #cc0000; }
+body.dark-mode .last-play-text { color: #ccc; }
+
+body.dark-mode .group-header-card { background: #1e1e1e; border-color: #333; }
+body.dark-mode .group-badge-pill { background: #333; color: #ccc; }
+body.dark-mode .group-stat-card { background: #1e1e1e; border-color: #333; }
+body.dark-mode .group-stat-title { color: #aaa; }
+body.dark-mode .group-stat-sub { color: #888; }
+body.dark-mode .group-tab-btn { color: #888; }
+body.dark-mode .group-tab-btn.active { color: #ff6b6b; border-bottom-color: #ff6b6b; }
+body.dark-mode .rank-1 { color: #000; }
+body.dark-mode .rank-2 { color: #000; }
+body.dark-mode .user-avatar { background: #333; color: #e0e0e0; }
+body.dark-mode .user-you-tag { background: #1b3a1e; color: #81c784; }
+body.dark-mode .trend-top { background: #1b3a1e; color: #81c784; border-color: #2e7d32; }
+body.dark-mode .trend-normal { background: #2d2d2d; color: #e0e0e0; border-color: #444; }
+body.dark-mode .trend-none { background: #222; color: #666; border-color: #333; }
+body.dark-mode .clickable-row:hover { background-color: #252525 !important; }
 body.dark-mode .modal-box { background-color: #1e1e1e; color: #e0e0e0; border: 1px solid #333; }
 body.dark-mode .modal-close { color: #aaa; }
+body.dark-mode .game-matrix-table th { background-color: #2d2d2d; color: #e0e0e0; border-color: #444; }
+body.dark-mode .game-matrix-table td { border-color: #333; }

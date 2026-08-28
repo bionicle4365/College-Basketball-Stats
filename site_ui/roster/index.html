@@ -12,9 +12,7 @@ permalink: /roster/
     </div>
 
     <script>
-        if (localStorage.getItem('isLoggedIn') !== 'true') {
-            window.location.href = '/College-Basketball-Stats/login';
-        }
+        checkAuth();
 
         const TEAM_ID = getFavoriteTeamId();
         const LEAGUE = getLeague();
@@ -47,7 +45,7 @@ permalink: /roster/
         fetch(ROSTER_URL)
             .then(r => r.json())
             .then(data => {
-                const teamName = data.team.displayName;
+                const teamName = escapeHtml(data.team.displayName);
                 document.getElementById('team-name').textContent = teamName + ' Roster';
                 const athletes = data.team.athletes;
                 renderTable(['Pos', 'Height', 'Weight', 'Class', 'Birthplace'], athletes, 'roster');
@@ -58,7 +56,7 @@ permalink: /roster/
 
         function renderTable(headers, data, type) {
             let html = `<table class="roster-table"><thead><tr><th>Player</th>`;
-            headers.forEach(h => html += `<th>${h}</th>`);
+            headers.forEach(h => html += `<th>${escapeHtml(h)}</th>`);
             html += `</tr></thead><tbody>`;
 
             data.forEach(item => {
@@ -66,22 +64,25 @@ permalink: /roster/
 
                 const player = type === 'stats' ? item.athlete : item;
                 const stats = type === 'stats' ? item.stats : [
-                    player.position.abbreviation,
-                    player.displayHeight,
-                    player.displayWeight,
+                    player.position?.abbreviation || '-',
+                    player.displayHeight || '-',
+                    player.displayWeight || '-',
                     player.experience?.abbreviation || '-',
                     player.birthPlace?.city ? `${player.birthPlace.city}, ${player.birthPlace.stateAbbrev || player.birthPlace.country}` : '-'
                 ];
 
-                const img = player.headshot ? player.headshot.href : 'https://a.espncdn.com/i/headshots/nophoto.png';
+                const img = player.headshot ? escapeHtml(player.headshot.href) : 'https://a.espncdn.com/i/headshots/nophoto.png';
+                const playerId = escapeHtml(player.id);
+                const safeName = escapeHtml(player.displayName);
+                const safeJersey = player.jersey ? escapeHtml(player.jersey) : '';
                 
-                html += `<tr class="player-row" onclick="toggleStats('${player.id}')" style="cursor: pointer;">
-                    <td><img src="${img}" class="headshot"><strong>${player.displayName}</strong> <span style="color:#888; font-size:0.8em">#${player.jersey || ''}</span></td>
-                    ${stats.map(s => `<td>${s}</td>`).join('')}
+                html += `<tr class="player-row" onclick="toggleStats('${playerId}')" style="cursor: pointer;">
+                    <td><img src="${img}" class="headshot"><strong>${safeName}</strong> <span style="color:#888; font-size:0.8em">#${safeJersey}</span></td>
+                    ${stats.map(s => `<td>${escapeHtml(s)}</td>`).join('')}
                 </tr>
-                <tr id="stats-${player.id}" class="stats-row" style="display: none;">
+                <tr id="stats-${playerId}" class="stats-row" style="display: none;">
                     <td colspan="${headers.length + 1}" style="padding: 15px;">
-                        <div id="stats-content-${player.id}">
+                        <div id="stats-content-${playerId}">
                             Loading...
                         </div>
                     </td>

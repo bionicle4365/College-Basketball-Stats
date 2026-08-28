@@ -11,6 +11,8 @@ permalink: /standings/
 </div>
 
 <script>
+    checkAuth();
+
     const TEAM_ID = getFavoriteTeamId();
     const SPORT_PATH = getSportPath();
     let targetGroupId = null;
@@ -79,17 +81,17 @@ permalink: /standings/
             standings.forEach((entry, index) => {
                 const team = entry.team;
                 const stats = entry.stats;
-                const apRank = team.rank || '';
-                const confRank = stats.find(r => r.type === 'playoffseed')
+                const apRank = team.rank ? escapeHtml(team.rank) + ' ' : '';
+                const confRank = stats.find(r => r.type === 'playoffseed');
                 const isMyTeam = String(team.id) === String(TEAM_ID);
                 const confRecord = stats.find(r => r.type === 'vsconf') || { summary: '-' };
                 const overallRecord = stats.find(r => r.type === 'total') || { summary: '-' };
 
                 html += `<tr class="${isMyTeam ? 'highlight-team' : ''}">
-                    <td>${confRank.displayValue}</td>
-                    <td>${getTeamLogoHtml(team)} ${apRank} ${team.shortDisplayName}</td>
-                    <td>${confRecord.summary}</td>
-                    <td>${overallRecord.summary}</td>
+                    <td>${confRank ? escapeHtml(confRank.displayValue) : (index + 1)}</td>
+                    <td>${getTeamLogoHtml(team)} ${apRank}${escapeHtml(team.shortDisplayName || team.displayName)}</td>
+                    <td>${escapeHtml(confRecord.summary)}</td>
+                    <td>${escapeHtml(overallRecord.summary)}</td>
                 </tr>`;
             });
 

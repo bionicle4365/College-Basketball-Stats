@@ -1,0 +1,43 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // User Settings: authenticated users can read; only the owner can modify
+    match /user_settings/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId);
+    }
+
+    // Groups: authenticated users can read and create groups
+    // Users can join by adding their own UID to the members array
+    match /groups/{groupId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.resource.data.members.hasAny([request.auth.uid]);
+      allow update: if isAuthenticated() && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members']) &&
+        request.resource.data.members.hasAll(resource.data.members) &&
+        request.resource.data.members.hasAny([request.auth.uid]);
+      allow delete: if isAuthenticated() && resource.data.members[0] == request.auth.uid;
+    }
+
+    // Team Game Picks (e.g. 152m, 152w, etc.)
+    // Users can only write and update their own UID and timestamp fields on any game pick document
+    match /{collectionName}/{gameId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && 
+        request.resource.data.keys().hasOnly([request.auth.uid, request.auth.uid + '_time']);
+      allow update: if isAuthenticated() && 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([request.auth.uid, request.auth.uid + '_time']);
+      allow delete: if false;
+    }
+  }
+}

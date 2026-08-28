@@ -33,7 +33,7 @@ permalink: /schedule/
             .then(r => r.json())
             .then(data => {
                 const events = data.events || [];
-                const teamDisplayName = data.team.displayName;
+                const teamDisplayName = escapeHtml(data.team.displayName);
                 document.getElementById('team-name').textContent = `${teamDisplayName} Schedule`;
                 
                 let html = `<table class="schedule-table">
@@ -61,14 +61,14 @@ permalink: /schedule/
                     const isHome = myTeam.homeAway === 'home';
                     const vsAt = isHome ? 'vs' : '@';
                     
-                    let result = game.status.type.detail;
+                    let result = escapeHtml(game.status.type.detail);
                     
                     if (game.status.type.state === 'post') {
                         const isWin = myTeam.winner;
                         const score = `${myTeam.score.displayValue}-${opponent.score.displayValue}`;
                         let otInfo = '';
                         if (game.status.type.shortDetail && game.status.type.shortDetail.includes('/')) {
-                            otInfo = ` <span style="font-size:0.85em; color:#666;">(${game.status.type.shortDetail.split('/')[1]})</span>`;
+                            otInfo = ` <span style="font-size:0.85em; color:#666;">(${escapeHtml(game.status.type.shortDetail.split('/')[1])})</span>`;
                         }
                         result = `<span class="${isWin ? 'win' : 'loss'}">${isWin ? 'W' : 'L'}</span> ${score}${otInfo}`;
                     } else {
@@ -76,13 +76,14 @@ permalink: /schedule/
                     }
 
                     const logo = getTeamLogoHtml(opponent.team);
+                    const oppName = escapeHtml(opponent.team.shortDisplayName || opponent.team.displayName);
 
-                    html += `<tr onclick="window.location.href='/College-Basketball-Stats/scoreboard#${game.id}'">
+                    html += `<tr onclick="window.location.href='/College-Basketball-Stats/scoreboard#${escapeHtml(game.id)}'">
                         <td>${dateStr}</td>
-                        <td>${vsAt} ${logo}${opponent.team.shortDisplayName || opponent.team.displayName}</td>
+                        <td>${vsAt} ${logo}${oppName}</td>
                         <td>${result}</td>
-                        <td id="val-${game.id}" style="font-size: 0.9em; color: #666;">-</td>
-                        <td id="pick-${game.id}" style="font-size: 0.9em; color: #666;">-</td>
+                        <td id="val-${escapeHtml(game.id)}" style="font-size: 0.9em; color: #666;">-</td>
+                        <td id="pick-${escapeHtml(game.id)}" style="font-size: 0.9em; color: #666;">-</td>
                     </tr>`;
                 });
                 
@@ -124,7 +125,7 @@ permalink: /schedule/
                                     if (topPlayer) {
                                         const cell = document.getElementById(`val-${game.id}`);
                                         if (cell) {
-                                            cell.innerHTML = `<strong>${topPlayer}</strong> (${maxVal})`;
+                                            cell.innerHTML = `<strong>${escapeHtml(topPlayer)}</strong> (${maxVal})`;
                                             cell.style.color = '';
                                         }
                                     }
@@ -139,7 +140,7 @@ permalink: /schedule/
                                                 const pickCell = document.getElementById(`pick-${game.id}`);
                                                 if (pickCell) {
                                                     const playerName = player.athlete ? (player.athlete.shortName || player.athlete.displayName) : (playerMap[pickedPlayerId] || 'Unknown');
-                                                    pickCell.innerHTML = `<strong>${playerName}</strong> (${val})`;
+                                                    pickCell.innerHTML = `<strong>${escapeHtml(playerName)}</strong> (${val})`;
                                                     pickCell.style.color = '';
                                                     if (topPlayerId && String(pickedPlayerId) === String(topPlayerId)) {
                                                         pickCell.classList.add('correct-pick');
@@ -159,7 +160,7 @@ permalink: /schedule/
                                     if (pickCell && pickCell.textContent === '-') {
                                         const playerName = playerMap[pickedPlayerId] || 'Unknown';
                                         const valDisplay = (game.status.type.state === 'post') ? ' (0)' : '';
-                                        pickCell.innerHTML = `<strong>${playerName}</strong>${valDisplay}`;
+                                        pickCell.innerHTML = `<strong>${escapeHtml(playerName)}</strong>${valDisplay}`;
                                         pickCell.style.color = '';
                                     }
                                 }

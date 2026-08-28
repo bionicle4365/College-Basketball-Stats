@@ -35,9 +35,34 @@ permalink: /groups/
         </div>
 
         <div id="single-group-view" style="display:none;">
-            <button class="btn btn-secondary" onclick="window.location.hash = ''" style="margin-bottom: 15px;">&larr; Back to Groups</button>
-            <h2 id="single-group-name"></h2>
-            <div id="single-group-leaderboard"></div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
+                <button class="btn btn-secondary" onclick="window.location.hash = ''">&larr; Back to Groups</button>
+                <button class="btn btn-secondary" id="share-group-btn" onclick="copyGroupLink()">🔗 Share Group Link</button>
+            </div>
+            
+            <div id="single-group-header"></div>
+            <div id="single-group-highlights"></div>
+
+            <div class="group-tabs">
+                <button class="group-tab-btn active" id="tab-btn-leaderboard" onclick="switchGroupTab('leaderboard')">Leaderboard</button>
+                <button class="group-tab-btn" id="tab-btn-matrix" onclick="switchGroupTab('matrix')">Game-by-Game Picks</button>
+            </div>
+
+            <div id="tab-content-leaderboard">
+                <div id="single-group-leaderboard"></div>
+            </div>
+
+            <div id="tab-content-matrix" style="display:none;">
+                <div id="single-group-matrix"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Member Pick History Modal -->
+    <div id="member-picks-modal" class="modal-overlay" onclick="closeMemberModal(event)">
+        <div class="modal-box">
+            <span class="modal-close" onclick="closeMemberModal(event)">&times;</span>
+            <div id="member-picks-modal-body" class="modal-body"></div>
         </div>
     </div>
 
@@ -46,6 +71,9 @@ permalink: /groups/
         const LEAGUE = getLeague();
         const SPORT_PATH = getSportPath();
         let USER_UID = null;
+        let currentGroupData = null;
+        let groupMemberStats = {};
+        let groupGamesData = [];
 
         auth.onAuthStateChanged(user => {
             if (user) {
@@ -59,7 +87,7 @@ permalink: /groups/
         window.addEventListener('hashchange', handleRouting);
 
         function handleRouting() {
-            const groupId = window.location.hash.substring(1); // Remove the '#'
+            const groupId = window.location.hash.substring(1);
             if (groupId) {
                 loadGroupDetail(groupId);
             } else {
@@ -73,7 +101,37 @@ permalink: /groups/
             passwordInput.style.display = isPrivate ? 'block' : 'none';
         }
 
-        function createGroup() {
+        function copyGroupLink() {
+            const btn = document.getElementById('share-group-btn');
+            navigator.clipboard.writeText(window.location.href).then(() => {
+                const originalText = btn.textContent;
+                btn.textContent = '✓ Link Copied!';
+                setTimeout(() => btn.textContent = originalText, 2000);
+            }).catch(() => {
+                alert('Group link: ' + window.location.href);
+            });
+        }
+
+        function switchGroupTab(tab) {
+            const lbTab = document.getElementById('tab-content-leaderboard');
+            const matrixTab = document.getElementById('tab-content-matrix');
+            const lbBtn = document.getElementById('tab-btn-leaderboard');
+            const matrixBtn = document.getElementById('tab-btn-matrix');
+
+            if (tab === 'leaderboard') {
+                lbTab.style.display = 'block';
+                matrixTab.style.display = 'none';
+                lbBtn.classList.add('active');
+                matrixBtn.classList.remove('active');
+            } else {
+                lbTab.style.display = 'none';
+                matrixTab.style.display = 'block';
+                lbBtn.classList.remove('active');
+                matrixBtn.classList.add('active');
+            }
+        }
+
+        async function createGroup() {
             const nameInput = document.getElementById('new-group-name');
             const name = nameInput.value.trim();
             const isPrivate = document.getElementById('new-group-private').checked;
@@ -82,48 +140,70 @@ permalink: /groups/
             if (!name) return alert('Please enter a group name');
             if (isPrivate && !password) return alert('Please enter a password for private group');
 
-            db.collection('groups').where('name', '==', name).get().then(snapshot => {
+            try {
+                const snapshot = await db.collection('groups').where('name', '==', name).get();
                 if (!snapshot.empty) {
                     alert('Group name already exists. Please choose another.');
                     return;
                 }
 
-                db.collection('groups').add({
+                let passwordHash = null;
+                let salt = null;
+                if (isPrivate) {
+                    salt = Math.random().toString(36).substring(2) + Date.now().toString(36);
+                    passwordHash = await hashPassword(password, salt);
+                }
+
+                const docRef = await db.collection('groups').add({
                     name: name,
                     teamId: TEAM_ID,
                     league: LEAGUE,
                     members: [USER_UID],
                     isPrivate: isPrivate,
-                    password: isPrivate ? password : null,
+                    passwordHash: passwordHash,
+                    salt: salt,
                     createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                }).then(() => {
-                    nameInput.value = '';
-                    document.getElementById('new-group-private').checked = false;
-                    document.getElementById('new-group-password').value = '';
-                    togglePasswordInput();
-                    loadGroups();
-                }).catch(err => {
-                    console.error("Error creating group: ", err);
-                    alert('Error creating group');
                 });
-            });
+
+                nameInput.value = '';
+                document.getElementById('new-group-private').checked = false;
+                document.getElementById('new-group-password').value = '';
+                togglePasswordInput();
+                window.location.hash = docRef.id;
+            } catch (err) {
+                console.error("Error creating group: ", err);
+                alert('Error creating group');
+            }
         }
 
-        function joinGroup(groupId, isPrivate) {
+        async function joinGroup(groupId, isPrivate) {
             if (isPrivate) {
-                const password = prompt("Enter group password:");
-                if (!password) return;
+                const enteredPassword = prompt("Enter group password:");
+                if (!enteredPassword) return;
                 
-                db.collection('groups').doc(groupId).get().then(doc => {
+                try {
+                    const doc = await db.collection('groups').doc(groupId).get();
                     if (doc.exists) {
                         const groupData = doc.data();
-                        if (groupData.password === password) {
+                        let isValid = false;
+
+                        if (groupData.passwordHash) {
+                            const testHash = await hashPassword(enteredPassword, groupData.salt || '');
+                            isValid = (testHash === groupData.passwordHash);
+                        } else if (groupData.password) {
+                            isValid = (groupData.password === enteredPassword);
+                        }
+
+                        if (isValid) {
                             addToGroup(groupId);
                         } else {
                             alert("Incorrect password");
                         }
                     }
-                });
+                } catch (e) {
+                    console.error("Error joining group:", e);
+                    alert("Error joining group");
+                }
             } else {
                 addToGroup(groupId);
             }
@@ -133,7 +213,7 @@ permalink: /groups/
             db.collection('groups').doc(groupId).update({
                 members: firebase.firestore.FieldValue.arrayUnion(USER_UID)
             }).then(() => {
-                loadGroups();
+                window.location.hash = groupId;
             });
         }
 
@@ -166,21 +246,26 @@ permalink: /groups/
         function renderGroups(containerId, groups, isMember) {
             const container = document.getElementById(containerId);
             if (groups.length === 0) {
-                container.innerHTML = '<p>No groups found.</p>';
+                container.innerHTML = '<p style="color: #888; font-style: italic;">No groups found.</p>';
                 return;
             }
 
             container.innerHTML = groups.map(group => {
                 const isPrivate = group.isPrivate || false;
                 const lockIcon = isPrivate ? '🔒 ' : '';
+                const memberCount = group.members?.length || 0;
+                const safeName = escapeHtml(group.name);
                 return `
                 <div class="group-card">
                     <div>
-                        <div class="group-name">${lockIcon}${group.name}</div>
-                        <div style="font-size: 0.9em; color: #666;">${group.members.length} members</div>
+                        <div class="group-name">${lockIcon}${safeName}</div>
+                        <div style="font-size: 0.85em; color: #666; margin-top: 3px;">
+                            <span class="group-badge-pill">${group.league === 'womens' ? 'NCAA-W' : 'NCAA-M'}</span>
+                            <span style="margin-left: 8px;">${memberCount} member${memberCount === 1 ? '' : 's'}</span>
+                        </div>
                     </div>
                     ${isMember ? 
-                        `<button class="btn btn-secondary" onclick="navigateToGroup('${group.id}')">View Group</button>` : 
+                        `<button class="btn btn-secondary" onclick="navigateToGroup('${group.id}')">View Group &rarr;</button>` : 
                         `<button class="btn btn-primary" onclick="joinGroup('${group.id}', ${isPrivate})">Join</button>`
                     }
                 </div>
@@ -191,88 +276,461 @@ permalink: /groups/
             window.location.hash = id;
         }
 
-        function loadGroupDetail(groupId) {
+        async function loadGroupDetail(groupId) {
             document.getElementById('groups-main-view').style.display = 'none';
             document.getElementById('single-group-view').style.display = 'block';
-            document.getElementById('single-group-name').textContent = 'Loading...';
-            const container = document.getElementById('single-group-leaderboard');
-            container.innerHTML = '<div class="loading">Loading leaderboard...</div>';
+            
+            const headerContainer = document.getElementById('single-group-header');
+            const highlightsContainer = document.getElementById('single-group-highlights');
+            const lbContainer = document.getElementById('single-group-leaderboard');
+            const matrixContainer = document.getElementById('single-group-matrix');
 
-            db.collection('groups').doc(groupId).get().then(doc => {
+            headerContainer.innerHTML = '<div class="loading">Loading group details...</div>';
+            highlightsContainer.innerHTML = '';
+            lbContainer.innerHTML = '';
+            matrixContainer.innerHTML = '';
+
+            try {
+                const doc = await db.collection('groups').doc(groupId).get();
                 if (!doc.exists) {
-                    container.innerHTML = 'Group not found.';
-                    document.getElementById('single-group-name').textContent = 'Group Not Found';
+                    headerContainer.innerHTML = '<div class="error">Group not found.</div>';
                     return;
                 }
-                const groupData = doc.data();
-                document.getElementById('single-group-name').textContent = groupData.name;
                 
-                if (!groupData.members.includes(USER_UID)) {
-                    container.innerHTML = 'You are not a member of this group.';
+                currentGroupData = doc.data();
+                currentGroupData.id = doc.id;
+
+                if (!currentGroupData.members || !currentGroupData.members.includes(USER_UID)) {
+                    headerContainer.innerHTML = `
+                        <div class="error" style="padding: 20px; text-align: center;">
+                            <h3>You are not a member of this group.</h3>
+                            <button class="btn btn-primary" onclick="joinGroup('${groupId}', ${currentGroupData.isPrivate || false})">Join Group</button>
+                        </div>
+                    `;
                     return;
                 }
 
-                renderLeaderboard(container, groupData.members);
-            });
+                // Render Header
+                const leagueTag = currentGroupData.league === 'womens' ? 'NCAA Women' : 'NCAA Men';
+                const lockBadge = currentGroupData.isPrivate ? '🔒 Private Group' : '🌐 Public Group';
+                headerContainer.innerHTML = `
+                    <div class="group-header-card">
+                        <div class="group-meta">
+                            <img src="https://a.espncdn.com/i/teamlogos/ncaa/500/${escapeHtml(currentGroupData.teamId)}.png" class="group-team-badge" alt="">
+                            <div>
+                                <h2 style="margin: 0 0 4px 0; font-size: 1.4rem;">${escapeHtml(currentGroupData.name)}</h2>
+                                <div style="display: flex; gap: 8px; align-items: center; font-size: 0.85rem; color: #666;">
+                                    <span class="group-badge-pill">${leagueTag}</span>
+                                    <span class="group-badge-pill">${lockBadge}</span>
+                                    <span>${currentGroupData.members.length} Members</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                // Calculate group stats and render leaderboard
+                await renderRichGroupData(currentGroupData);
+
+            } catch (e) {
+                console.error("Error loading group detail:", e);
+                headerContainer.innerHTML = '<div class="error">Error loading group data.</div>';
+            }
         }
 
-        async function renderLeaderboard(container, members) {
+        async function fetchUserProfiles(uids) {
+            const profiles = {};
+            const fetchPromises = uids.map(uid => 
+                db.collection('user_settings').doc(uid).get()
+                    .then(doc => {
+                        if (doc.exists) {
+                            profiles[uid] = doc.data();
+                        } else {
+                            profiles[uid] = {};
+                        }
+                    })
+                    .catch(() => {
+                        profiles[uid] = {};
+                    })
+            );
+            await Promise.all(fetchPromises);
+            return profiles;
+        }
+
+        async function renderRichGroupData(groupData) {
+            const highlightsContainer = document.getElementById('single-group-highlights');
+            const lbContainer = document.getElementById('single-group-leaderboard');
+            const matrixContainer = document.getElementById('single-group-matrix');
             
+            lbContainer.innerHTML = '<div class="loading">Calculating stats and compiling leaderboard...</div>';
+
             try {
-                const scheduleResp = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${getSportPath()}/teams/${TEAM_ID}/schedule`);
+                const members = groupData.members || [];
+                const teamId = groupData.teamId || TEAM_ID;
+                const league = groupData.league || LEAGUE;
+                const sportPath = getSportPath(league);
+                const collectionName = getCollectionName(teamId, league);
+
+                // 1. Fetch user profiles in parallel
+                const userProfiles = await fetchUserProfiles(members);
+
+                // 2. Fetch completed schedule
+                const scheduleResp = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${sportPath}/teams/${teamId}/schedule`);
                 const scheduleData = await scheduleResp.json();
-                const completedGames = (scheduleData.events || []).filter(e => e.competitions[0].status.type.state === 'post');
+                const completedEvents = (scheduleData.events || []).filter(e => e.competitions[0].status.type.state === 'post');
 
-                const scores = {};
-                members.forEach(m => scores[m] = 0);
+                // Initialize member stats store
+                groupMemberStats = {};
+                members.forEach(uid => {
+                    groupMemberStats[uid] = {
+                        uid: uid,
+                        displayName: userProfiles[uid]?.displayName || (uid === USER_UID ? 'You' : `Member ${uid.substring(0, 5)}`),
+                        favoriteTeamId: userProfiles[uid]?.favoriteTeamId || teamId,
+                        totalPoints: 0,
+                        picksCount: 0,
+                        topPicksCount: 0,
+                        picks: {},
+                        bestPick: null
+                    };
+                });
 
-                const collectionName = getCollectionName(TEAM_ID, LEAGUE);
+                // 3. Process each completed game
+                groupGamesData = [];
 
-                const gamePromises = completedGames.map(async (event) => {
-                    const gameId = event.id;
-                    const pickDoc = await db.collection(collectionName).doc(gameId).get().catch(() => null);
-                    if (!pickDoc || !pickDoc.exists) return;
-                    const picks = pickDoc.data();
+                const gamePromises = completedEvents.map(async (event) => {
+                    const gameId = String(event.id);
+                    const comp = event.competitions[0];
+                    const oppTeam = comp.competitors.find(c => String(c.team.id) !== String(teamId))?.team;
+                    const gameDate = new Date(event.date);
 
-                    const summaryResp = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${getSportPath()}/summary?event=${gameId}`);
-                    const summary = await summaryResp.json();
-                    if (!summary.boxscore || !summary.boxscore.players) return;
-                    
-                    const teamStats = summary.boxscore.players.find(p => p.team.id === TEAM_ID);
-                    if (!teamStats) return;
+                    const [summaryResp, pickDoc] = await Promise.all([
+                        fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${sportPath}/summary?event=${gameId}`).then(r => r.json()).catch(() => null),
+                        db.collection(collectionName).doc(gameId).get().catch(() => null)
+                    ]);
+
+                    if (!summaryResp || !summaryResp.boxscore || !summaryResp.boxscore.players) return;
+
+                    const teamStats = summaryResp.boxscore.players.find(p => String(p.team.id) === String(teamId));
+                    if (!teamStats || !teamStats.statistics || !teamStats.statistics[0]) return;
 
                     const athletes = teamStats.statistics[0].athletes;
                     const labels = teamStats.statistics[0].names;
 
-                    const playerVals = {};
+                    // Calculate VAL for all players in this game
+                    const playerValMap = {};
+                    let topPlayerId = null;
+                    let topPlayerName = '';
+                    let topVal = -Infinity;
+
                     athletes.forEach(p => {
-                        if (p.athlete) playerVals[p.athlete.id] = calculateVal(p.stats, labels);
+                        if (p.athlete && p.stats) {
+                            const val = calculateVal(p.stats, labels);
+                            const name = p.athlete.shortName || p.athlete.displayName;
+                            playerValMap[p.athlete.id] = { val: val, name: name };
+                            if (val > topVal) {
+                                topVal = val;
+                                topPlayerId = String(p.athlete.id);
+                                topPlayerName = name;
+                            }
+                        }
                     });
 
+                    const picks = (pickDoc && pickDoc.exists) ? pickDoc.data() : {};
+
+                    // Assign stats to members
                     members.forEach(uid => {
                         const pickedPlayerId = picks[uid];
-                        if (pickedPlayerId && playerVals[pickedPlayerId]) {
-                            scores[uid] += playerVals[pickedPlayerId];
+                        if (pickedPlayerId && playerValMap[pickedPlayerId]) {
+                            const pData = playerValMap[pickedPlayerId];
+                            const isTop = String(pickedPlayerId) === String(topPlayerId);
+                            
+                            groupMemberStats[uid].totalPoints += pData.val;
+                            groupMemberStats[uid].picksCount += 1;
+                            if (isTop) groupMemberStats[uid].topPicksCount += 1;
+
+                            const pickInfo = {
+                                gameId: gameId,
+                                date: gameDate,
+                                opponent: oppTeam?.shortDisplayName || oppTeam?.displayName || 'Opponent',
+                                opponentLogo: oppTeam?.logos?.[0]?.href || '',
+                                playerId: pickedPlayerId,
+                                playerName: pData.name,
+                                val: pData.val,
+                                isTopPlayer: isTop,
+                                topPlayerName: topPlayerName,
+                                topPlayerVal: topVal
+                            };
+
+                            groupMemberStats[uid].picks[gameId] = pickInfo;
+
+                            if (!groupMemberStats[uid].bestPick || pData.val > groupMemberStats[uid].bestPick.val) {
+                                groupMemberStats[uid].bestPick = pickInfo;
+                            }
                         }
+                    });
+
+                    groupGamesData.push({
+                        id: gameId,
+                        date: gameDate,
+                        opponent: oppTeam?.shortDisplayName || oppTeam?.displayName || 'Opponent',
+                        opponentLogo: oppTeam?.logos?.[0]?.href || '',
+                        topPlayerName: topPlayerName,
+                        topPlayerVal: topVal,
+                        picks: picks,
+                        playerValMap: playerValMap
                     });
                 });
 
                 await Promise.all(gamePromises);
 
-                const sortedMembers = members.sort((a, b) => scores[b] - scores[a]);
-                
-                let html = `<table class="leaderboard-table"><thead><tr><th>Rank</th><th>User</th><th>Points</th></tr></thead><tbody>`;
-                sortedMembers.forEach((uid, index) => {
-                    const displayName = uid === USER_UID ? 'You' : `Member ${uid.substr(0, 4)}...`;
-                    html += `<tr><td>${index + 1}</td><td>${displayName}</td><td>${scores[uid]}</td></tr>`;
+                // Sort games chronologically
+                groupGamesData.sort((a, b) => b.date - a.date);
+
+                // Convert member stats to array and sort by totalPoints descending
+                const sortedMemberList = Object.values(groupMemberStats).sort((a, b) => b.totalPoints - a.totalPoints);
+
+                // 4. Render Highlights
+                if (sortedMemberList.length > 0 && completedEvents.length > 0) {
+                    const leader = sortedMemberList[0];
+                    
+                    const accuracyRanked = [...sortedMemberList]
+                        .filter(m => m.picksCount > 0)
+                        .sort((a, b) => (b.topPicksCount / b.picksCount) - (a.topPicksCount / a.picksCount));
+                    const accuracyKing = accuracyRanked[0];
+
+                    let bestOverallPick = null;
+                    let bestPicker = null;
+                    sortedMemberList.forEach(m => {
+                        if (m.bestPick && (!bestOverallPick || m.bestPick.val > bestOverallPick.val)) {
+                            bestOverallPick = m.bestPick;
+                            bestPicker = m;
+                        }
+                    });
+
+                    highlightsContainer.innerHTML = `
+                        <div class="group-stats-grid">
+                            <div class="group-stat-card">
+                                <div class="group-stat-title">🏆 Current Leader</div>
+                                <div class="group-stat-value">${escapeHtml(leader.displayName)}</div>
+                                <div class="group-stat-sub">${leader.totalPoints} VAL Points</div>
+                            </div>
+                            <div class="group-stat-card">
+                                <div class="group-stat-title">🎯 Top Pick King</div>
+                                <div class="group-stat-value">${accuracyKing ? escapeHtml(accuracyKing.displayName) : '-'}</div>
+                                <div class="group-stat-sub">${accuracyKing ? `${accuracyKing.topPicksCount} Top Picks (${((accuracyKing.topPicksCount / accuracyKing.picksCount) * 100).toFixed(0)}%)` : 'No picks yet'}</div>
+                            </div>
+                            <div class="group-stat-card">
+                                <div class="group-stat-title">⚡ Best Single Pick</div>
+                                <div class="group-stat-value">${bestOverallPick ? `+${bestOverallPick.val}` : '-'}</div>
+                                <div class="group-stat-sub">${bestOverallPick ? `${escapeHtml(bestPicker.displayName)} (${escapeHtml(bestOverallPick.playerName)})` : 'No picks yet'}</div>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                // 5. Render Leaderboard Table
+                let lbHtml = `
+                    <div style="overflow-x: auto;">
+                        <table class="leaderboard-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 40px; text-align: center;">Rank</th>
+                                    <th>Member</th>
+                                    <th style="text-align: center;">Total VAL</th>
+                                    <th style="text-align: center;">Picks Made</th>
+                                    <th style="text-align: center;">Top Pick %</th>
+                                    <th style="text-align: center;">Avg VAL</th>
+                                    <th style="text-align: center;">Recent Form</th>
+                                    <th style="text-align: center;">Details</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+
+                sortedMemberList.forEach((member, index) => {
+                    const rankNum = index + 1;
+                    let rankDisplay = `<span style="font-weight:bold; color:#777;">${rankNum}</span>`;
+                    if (rankNum === 1) rankDisplay = `<span class="rank-badge rank-1">1</span>`;
+                    else if (rankNum === 2) rankDisplay = `<span class="rank-badge rank-2">2</span>`;
+                    else if (rankNum === 3) rankDisplay = `<span class="rank-badge rank-3">3</span>`;
+
+                    const isYou = member.uid === USER_UID;
+                    const youBadge = isYou ? `<span class="user-you-tag">You</span>` : '';
+                    const avatarLetter = escapeHtml((member.displayName || 'U').charAt(0).toUpperCase());
+
+                    const avgVal = member.picksCount > 0 ? (member.totalPoints / member.picksCount).toFixed(1) : '-';
+                    const topRate = member.picksCount > 0 ? `${member.topPicksCount} (${((member.topPicksCount / member.picksCount) * 100).toFixed(0)}%)` : '-';
+
+                    // Recent Form pills (last 3-4 games)
+                    let trendHtml = '<div class="trend-container">';
+                    const recentGames = groupGamesData.slice(0, 4);
+                    if (recentGames.length === 0) {
+                        trendHtml += `<span class="trend-pill trend-none">-</span>`;
+                    } else {
+                        recentGames.forEach(g => {
+                            const pick = member.picks[g.id];
+                            if (pick) {
+                                const cls = pick.isTopPlayer ? 'trend-top' : 'trend-normal';
+                                const star = pick.isTopPlayer ? '★' : '';
+                                const safePlayer = escapeHtml(pick.playerName);
+                                trendHtml += `<span class="trend-pill ${cls}" title="${safePlayer}: +${pick.val} VAL">${star}+${pick.val}</span>`;
+                            } else {
+                                trendHtml += `<span class="trend-pill trend-none" title="No Pick">-</span>`;
+                            }
+                        });
+                    }
+                    trendHtml += '</div>';
+
+                    lbHtml += `
+                        <tr class="clickable-row" onclick="openMemberModal('${escapeHtml(member.uid)}')">
+                            <td style="text-align: center;">${rankDisplay}</td>
+                            <td>
+                                <div class="user-cell">
+                                    <div class="user-avatar">${avatarLetter}</div>
+                                    <strong style="font-size: 0.95rem;">${escapeHtml(member.displayName)}</strong>
+                                    ${youBadge}
+                                </div>
+                            </td>
+                            <td style="text-align: center; font-weight: bold; font-size: 1.1rem; color: #cc0000;">${member.totalPoints}</td>
+                            <td style="text-align: center;">${member.picksCount} / ${completedEvents.length}</td>
+                            <td style="text-align: center;">${topRate}</td>
+                            <td style="text-align: center;">${avgVal}</td>
+                            <td style="text-align: center;">${trendHtml}</td>
+                            <td style="text-align: center;">
+                                <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.8rem;" onclick="event.stopPropagation(); openMemberModal('${escapeHtml(member.uid)}')">View</button>
+                            </td>
+                        </tr>
+                    `;
                 });
-                html += `</tbody></table>`;
-                
-                container.innerHTML = html;
+
+                lbHtml += `</tbody></table></div>`;
+                lbContainer.innerHTML = lbHtml;
+
+                // 6. Render Game-by-Game Matrix Tab
+                let matrixHtml = `
+                    <div style="overflow-x: auto;">
+                        <table class="game-matrix-table">
+                            <thead>
+                                <tr>
+                                    <th>Date & Opponent</th>
+                                    <th>Top Performer</th>
+                                    ${sortedMemberList.map(m => `<th style="text-align: center;">${escapeHtml(m.displayName)}${m.uid === USER_UID ? ' (You)' : ''}</th>`).join('')}
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+
+                if (groupGamesData.length === 0) {
+                    matrixHtml += `<tr><td colspan="${sortedMemberList.length + 2}" style="text-align:center; padding: 20px; color:#888;">No completed games yet.</td></tr>`;
+                } else {
+                    groupGamesData.forEach(game => {
+                        const dateStr = game.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                        const oppLogo = game.opponentLogo ? `<img src="${escapeHtml(game.opponentLogo)}" width="18" height="18" style="vertical-align: middle; margin-right: 5px;">` : '';
+
+                        let memberPicksCells = sortedMemberList.map(member => {
+                            const pick = member.picks[game.id];
+                            if (pick) {
+                                const cls = pick.isTopPlayer ? 'background-color: rgba(40, 167, 69, 0.15); border-radius: 4px;' : '';
+                                const crown = pick.isTopPlayer ? ' 👑' : '';
+                                return `<td style="text-align: center; padding: 6px; ${cls}">
+                                    <div style="font-weight: 500; font-size: 0.85rem;">${escapeHtml(pick.playerName)}</div>
+                                    <div style="font-weight: bold; color: ${pick.isTopPlayer ? '#28a745' : '#666'}; font-size: 0.85rem;">+${pick.val}${crown}</div>
+                                </td>`;
+                            } else {
+                                return `<td style="text-align: center; color: #bbb; font-size: 0.85rem;">-</td>`;
+                            }
+                        }).join('');
+
+                        matrixHtml += `
+                            <tr>
+                                <td><strong>${dateStr}</strong> vs ${oppLogo}${escapeHtml(game.opponent)}</td>
+                                <td><span style="color: #28a745; font-weight: bold;">${escapeHtml(game.topPlayerName)}</span> (${game.topPlayerVal})</td>
+                                ${memberPicksCells}
+                            </tr>
+                        `;
+                    });
+                }
+
+                matrixHtml += `</tbody></table></div>`;
+                matrixContainer.innerHTML = matrixHtml;
 
             } catch (e) {
-                console.error(e);
-                container.innerHTML = 'Error loading leaderboard.';
+                console.error("Error calculating group stats:", e);
+                lbContainer.innerHTML = '<div class="error">Error loading group statistics. Please try again later.</div>';
+            }
+        }
+
+        function openMemberModal(uid) {
+            const member = groupMemberStats[uid];
+            if (!member) return;
+
+            const modal = document.getElementById('member-picks-modal');
+            const modalBody = document.getElementById('member-picks-modal-body');
+
+            const isYou = uid === USER_UID;
+            const youTag = isYou ? '<span class="user-you-tag">You</span>' : '';
+            const avgVal = member.picksCount > 0 ? (member.totalPoints / member.picksCount).toFixed(1) : '0.0';
+
+            const sortedPicks = Object.values(member.picks).sort((a, b) => b.date - a.date);
+
+            let tableRows = '';
+            if (sortedPicks.length === 0) {
+                tableRows = `<tr><td colspan="5" style="text-align:center; padding: 20px; color:#888;">No picks made in this group yet.</td></tr>`;
+            } else {
+                tableRows = sortedPicks.map(p => {
+                    const dateStr = p.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    const oppLogo = p.opponentLogo ? `<img src="${escapeHtml(p.opponentLogo)}" width="16" height="16" style="vertical-align: middle; margin-right: 4px;">` : '';
+                    const valBadge = p.isTopPlayer 
+                        ? `<span style="background: #d4edda; color: #155724; padding: 2px 6px; border-radius: 4px; font-weight: bold;">+${p.val} 👑</span>`
+                        : `<span style="font-weight: bold;">+${p.val}</span>`;
+
+                    return `
+                        <tr>
+                            <td>${dateStr}</td>
+                            <td>${oppLogo}${escapeHtml(p.opponent)}</td>
+                            <td><strong>${escapeHtml(p.playerName)}</strong></td>
+                            <td style="text-align: center;">${valBadge}</td>
+                            <td style="text-align: right; color: #666; font-size: 0.85em;">${escapeHtml(p.topPlayerName)} (${p.topPlayerVal})</td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+
+            modalBody.innerHTML = `
+                <div style="border-bottom: 1px solid #eee; padding-bottom: 12px; margin-bottom: 15px;">
+                    <h3 style="margin: 0 0 5px 0; font-size: 1.2rem;">${escapeHtml(member.displayName)} ${youTag}</h3>
+                    <div style="display: flex; gap: 15px; font-size: 0.85rem; color: #666; flex-wrap: wrap;">
+                        <span>Total: <strong style="color: #cc0000;">${member.totalPoints} VAL</strong></span>
+                        <span>Picks: <strong>${member.picksCount}</strong></span>
+                        <span>Top Picks: <strong>${member.topPicksCount}</strong></span>
+                        <span>Avg: <strong>${avgVal}</strong></span>
+                    </div>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table class="leaderboard-table" style="font-size: 0.85rem;">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Opponent</th>
+                                <th>Pick</th>
+                                <th style="text-align: center;">VAL</th>
+                                <th style="text-align: right;">Team Top Player</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${tableRows}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            modal.style.display = 'flex';
+        }
+
+        function closeMemberModal(event) {
+            if (event.target.id === 'member-picks-modal' || event.target.classList.contains('modal-close')) {
+                document.getElementById('member-picks-modal').style.display = 'none';
             }
         }
     </script>
+

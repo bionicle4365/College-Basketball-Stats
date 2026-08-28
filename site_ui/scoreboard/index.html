@@ -47,7 +47,7 @@ permalink: /scoreboard/
           .catch(() => null);
   }
 
-  function savePick(gameId) {
+  function savePick(gameId, gameDateStr) {
       const select = document.getElementById('player-pick-select');
       const playerId = select.value;
       const message = document.getElementById('pick-message');
@@ -57,12 +57,22 @@ permalink: /scoreboard/
           message.style.color = "red";
           return;
       }
+
+      if (gameDateStr) {
+          const gameTime = new Date(gameDateStr).getTime();
+          if (Date.now() > gameTime) {
+              message.textContent = "Pick deadline passed (game has started).";
+              message.style.color = "red";
+              return;
+          }
+      }
       
       const league = getLeague();
       const collectionName = getCollectionName(TEAM_ID, league);
       
       db.collection(collectionName).doc(String(gameId)).set({
-          [USER_UID]: playerId
+          [USER_UID]: playerId,
+          [`${USER_UID}_time`]: Date.now()
       }, { merge: true })
       .then(() => {
           message.textContent = "Pick saved!";
@@ -75,11 +85,31 @@ permalink: /scoreboard/
       });
   }
 
-  function loadStats(type) {
+  let livePollInterval = null;
+  let activeTeamTab = 0;
+
+  function stopLivePolling() {
+      if (livePollInterval) {
+          clearInterval(livePollInterval);
+          livePollInterval = null;
+      }
+  }
+
+  function startLivePolling(type) {
+      if (!livePollInterval) {
+          livePollInterval = setInterval(() => {
+              loadStats(type, true);
+          }, 30000);
+      }
+  }
+
+  function loadStats(type, isSilent = false) {
     localStorage.setItem('league', type);
     
     const display = document.getElementById('game-display');
-    display.innerHTML = '<div class="loading">Fetching latest scores...</div>';
+    if (!isSilent) {
+        display.innerHTML = '<div class="loading">Fetching latest scores...</div>';
+    }
 
     const gameId = window.location.hash.substring(1);
 
@@ -87,6 +117,11 @@ permalink: /scoreboard/
         const summaryUrl = ENDPOINTS[type].replace('scoreboard', 'summary') + '?event=' + gameId;
         fetch(summaryUrl).then(r => r.json()).then(summary => {
             const state = summary.header.competitions[0].status.type.state;
+            if (state === 'in') {
+                startLivePolling(type);
+            } else {
+                stopLivePolling();
+            }
             const promises = [fetchPick(gameId, type)];
             
             if (state === 'pre') {
@@ -98,14 +133,14 @@ permalink: /scoreboard/
 
             Promise.all(promises).then(([pickedPlayerId, rosterData]) => {
                 if (summary && summary.header) {
-                    renderGame(summary.header, summary, null, pickedPlayerId, rosterData);
+                    renderGame(summary.header, summary, null, pickedPlayerId, rosterData, type);
                 } else {
                     display.innerHTML = '<div class="error">Game data not available.</div>';
                 }
             });
         }).catch(err => {
             console.error(err);
-            display.innerHTML = '<div class="error">Error loading game data.</div>';
+            if (!isSilent) display.innerHTML = '<div class="error">Error loading game data.</div>';
         });
         return;
     }
@@ -114,7 +149,7 @@ permalink: /scoreboard/
       .then(response => response.json())
       .then(data => {
         const events = data.events || [];
-        // Find the game involving NC State
+        // Find the game involving user's team
         const game = events.find(evt => 
           evt.competitions[0].competitors.some(comp => comp.team.id === TEAM_ID)
         );
@@ -122,24 +157,30 @@ permalink: /scoreboard/
         // If game is live or final today, show it
         if (game) {
           const state = game.status.type.state;
+          if (state === 'in') {
+            startLivePolling(type);
+          } else {
+            stopLivePolling();
+          }
+
           if (state === 'in' || state === 'post') {
             const summaryUrl = ENDPOINTS[type].replace('scoreboard', 'summary') + '?event=' + game.id;
             return Promise.all([
                 fetch(summaryUrl).then(r => r.json()),
                 fetchPick(game.id, type)
-            ]).then(([summary, pickedPlayerId]) => renderGame(game, summary, null, pickedPlayerId));
+            ]).then(([summary, pickedPlayerId]) => renderGame(game, summary, null, pickedPlayerId, null, type));
           } else if (state === 'pre') {
              const sportPath = getSportPath(type);
              return Promise.all([
                  fetchPick(game.id, type),
                  fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${sportPath}/teams/${TEAM_ID}?enable=roster`).then(r => r.json())
              ]).then(([pickedPlayerId, rosterData]) => {
-                 renderGame(game, null, null, pickedPlayerId, rosterData);
+                 renderGame(game, null, null, pickedPlayerId, rosterData, type);
              });
           }
         }
 
-        // Fallback: Find previous game
+        // Fallback: Find previous or upcoming game from schedule
         const sportPath = getSportPath(type);
         const scheduleUrl = `https://site.api.espn.com/apis/site/v2/sports/basketball/${sportPath}/teams/${TEAM_ID}/schedule`;
         
@@ -168,34 +209,40 @@ permalink: /scoreboard/
             }
             
             if (!targetGame) {
+              stopLivePolling();
               display.innerHTML = '<p>No recent games found.</p>';
               return;
             }
             
             const nextGame = events.find(e => e.competitions[0].status.type.state === 'pre' && e.id !== targetGame.id);
-            
             const state = targetGame.competitions[0].status.type.state;
             
+            if (state === 'in') {
+                startLivePolling(type);
+            } else {
+                stopLivePolling();
+            }
+
             if (state === 'pre') {
                  const sportPath = getSportPath(type);
                  return Promise.all([
                      fetchPick(targetGame.id, type),
                      fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${sportPath}/teams/${TEAM_ID}?enable=roster`).then(r => r.json())
                  ]).then(([pickedPlayerId, rosterData]) => {
-                     renderGame(targetGame, null, nextGame, pickedPlayerId, rosterData);
+                     renderGame(targetGame, null, nextGame, pickedPlayerId, rosterData, type);
                  });
             } else {
                 const summaryUrl = ENDPOINTS[type].replace('scoreboard', 'summary') + '?event=' + targetGame.id;
                 return Promise.all([
                     fetch(summaryUrl).then(r => r.json()),
                     fetchPick(targetGame.id, type)
-                ]).then(([summary, pickedPlayerId]) => renderGame(summary.header, summary, nextGame, pickedPlayerId));
+                ]).then(([summary, pickedPlayerId]) => renderGame(summary.header, summary, nextGame, pickedPlayerId, null, type));
             }
           });
       })
       .catch(err => {
         console.error(err);
-        display.innerHTML = '<div class="error">Failed to load data. Please try again later.</div>';
+        if (!isSilent) display.innerHTML = '<div class="error">Failed to load data. Please try again later.</div>';
       });
   }
 
@@ -217,12 +264,51 @@ permalink: /scoreboard/
       return parts.length > 0 ? parts.join(' ') : (recs[0]?.summary || '');
   }
 
-  function renderGame(event, summaryData, nextGame, pickedPlayerId, rosterData) {
+  function renderLinescores(awayTeam, homeTeam) {
+      const awayScores = awayTeam.linescores || [];
+      const homeScores = homeTeam.linescores || [];
+      if (awayScores.length === 0 && homeScores.length === 0) return '';
+
+      const maxPeriods = Math.max(awayScores.length, homeScores.length);
+      if (maxPeriods === 0) return '';
+
+      let headerHtml = '<th>Team</th>';
+      for (let i = 1; i <= maxPeriods; i++) {
+          let colName = i === 1 ? '1st' : i === 2 ? '2nd' : 'OT';
+          if (i > 3) colName = `OT${i - 2}`;
+          headerHtml += `<th>${colName}</th>`;
+      }
+      headerHtml += '<th>T</th>';
+
+      const buildRow = (c) => {
+          let row = `<td style="text-align:left; font-weight:500;">${getTeamLogoHtml(c.team)} ${c.team.abbreviation || c.team.shortDisplayName}</td>`;
+          for (let i = 0; i < maxPeriods; i++) {
+              const val = c.linescores?.[i]?.displayValue ?? c.linescores?.[i]?.value ?? '-';
+              row += `<td>${val}</td>`;
+          }
+          row += `<td style="font-weight:bold;">${c.score || 0}</td>`;
+          return `<tr>${row}</tr>`;
+      };
+
+      return `
+        <div class="linescores-wrapper">
+          <table class="linescore-table">
+            <thead><tr>${headerHtml}</tr></thead>
+            <tbody>
+              ${buildRow(awayTeam)}
+              ${buildRow(homeTeam)}
+            </tbody>
+          </table>
+        </div>
+      `;
+  }
+
+  function renderGame(event, summaryData, nextGame, pickedPlayerId, rosterData, type) {
     const competition = event.competitions[0];
     const statusObj = event.status || competition.status;
     const status = statusObj.type.detail;
     const state = statusObj.type.state;
-    const weather = event.weather || (summaryData && summaryData.gameInfo && summaryData.gameInfo.weather);
+    const isLive = state === 'in';
     
     // Identify Home and Away
     const homeTeam = competition.competitors.find(c => c.homeAway === 'home');
@@ -246,10 +332,39 @@ permalink: /scoreboard/
       return (rank && rank <= 25) ? `#${rank} ` : '';
     };
 
+    let statusBadgeHtml = `<div class="status">${status}</div>`;
+    if (isLive) {
+      statusBadgeHtml = `
+        <div class="live-status-container">
+          <div class="live-badge"><span class="live-pulse"></span> LIVE</div>
+          <span class="live-clock-detail">${status}</span>
+          <button class="live-refresh-btn" onclick="loadStats('${type || getLeague()}', true)" title="Refresh Live Data">&#x21bb; Live</button>
+        </div>
+      `;
+    }
+
+    // Linescores
+    const linescoreHtml = (summaryData && (awayTeam.linescores || homeTeam.linescores)) ? renderLinescores(awayTeam, homeTeam) : '';
+
+    // Last Play / Situation
+    let lastPlayHtml = '';
+    if (summaryData && summaryData.plays && summaryData.plays.length > 0) {
+        const lastPlay = summaryData.plays[summaryData.plays.length - 1];
+        if (lastPlay && (lastPlay.text || lastPlay.alternativeText)) {
+            const clockText = lastPlay.clock?.displayValue ? `(${lastPlay.clock.displayValue}) ` : '';
+            lastPlayHtml = `
+              <div class="last-play-card">
+                <span class="last-play-badge">Last Play</span>
+                <span class="last-play-text">${clockText}${lastPlay.text || lastPlay.alternativeText}</span>
+              </div>
+            `;
+        }
+    }
+
     const display = document.getElementById('game-display');
     
     display.innerHTML = `
-      <div class="status">${status}</div>
+      ${statusBadgeHtml}
       <div class="score-board">
         <div class="team">
           ${getTeamLogoHtml(awayTeam.team)}
@@ -265,22 +380,33 @@ permalink: /scoreboard/
           <div class="team-score">${homeTeam.score || 0}</div>
         </div>
       </div>
+      ${linescoreHtml}
+      ${lastPlayHtml}
       ${nextGameHtml}
       <div id="stats-content">
-        ${(summaryData && summaryData.boxscore && renderPlayerStats(summaryData, pickedPlayerId)) || renderTeamStats(selectedTeam, opponent, rosterData, pickedPlayerId, event.id, state)}
+        ${(summaryData && summaryData.boxscore && renderPlayerStats(summaryData, pickedPlayerId)) || renderTeamStats(selectedTeam, opponent, rosterData, pickedPlayerId, event.id, state, event.date)}
       </div>
     `;
+
+    // Restore active tab if player stats were rendered
+    if (summaryData && summaryData.boxscore && summaryData.boxscore.players) {
+        const targetBtn = document.querySelector(`.btn-group button:nth-child(${activeTeamTab + 1})`);
+        if (targetBtn) {
+            toggleTeamStats(activeTeamTab, targetBtn);
+        }
+    }
   }
 
-  function renderPlayerPicker(rosterData, pickedPlayerId, gameId) {
+  function renderPlayerPicker(rosterData, pickedPlayerId, gameId, gameDate) {
       const athletes = rosterData.team.athletes.filter(p => p.active !== false);
       athletes.sort((a, b) => a.displayName.localeCompare(b.displayName));
       
       const options = athletes.map(p => {
           const selected = String(p.id) === String(pickedPlayerId) ? 'selected' : '';
-          return `<option value="${p.id}" ${selected}>${p.displayName}</option>`;
+          return `<option value="${escapeHtml(p.id)}" ${selected}>${escapeHtml(p.displayName)}</option>`;
       }).join('');
       
+      const safeGameDate = gameDate ? escapeHtml(gameDate) : '';
       return `
         <div class="pick-container">
             <h3>Make Your Pick</h3>
@@ -290,22 +416,22 @@ permalink: /scoreboard/
                     <option value="">-- Select Player --</option>
                     ${options}
                 </select>
-                <button onclick="savePick('${gameId}')" style="padding: 8px 16px; background: #cc0000; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Save</button>
+                <button onclick="savePick('${escapeHtml(gameId)}', '${safeGameDate}')" style="padding: 8px 16px; background: #cc0000; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Save</button>
             </div>
             <div id="pick-message" style="margin-top: 10px; height: 20px; font-weight: bold;"></div>
         </div>
       `;
   }
 
-  function renderTeamStats(team1, team2, rosterData, pickedPlayerId, gameId, state) {
+  function renderTeamStats(team1, team2, rosterData, pickedPlayerId, gameId, state, gameDate) {
     // If no stats available (e.g. pre-game), return empty or basic record info
     if (state === 'pre' || !team1.statistics || team1.statistics.length === 0) {
       if (rosterData) {
-          return renderPlayerPicker(rosterData, pickedPlayerId, gameId);
+          return renderPlayerPicker(rosterData, pickedPlayerId, gameId, gameDate);
       }
       return `<div class="leaders" style="text-align:center; margin-top:15px;">
         <p>Game has not started.</p>
-        <p>${team1.team.abbreviation}: ${getRecord(team1) || 'N/A'} | ${team2.team.abbreviation}: ${getRecord(team2) || 'N/A'}</p>
+        <p>${escapeHtml(team1.team.abbreviation)}: ${escapeHtml(getRecord(team1) || 'N/A')} | ${escapeHtml(team2.team.abbreviation)}: ${escapeHtml(getRecord(team2) || 'N/A')}</p>
       </div>`;
     }
 
@@ -328,9 +454,9 @@ permalink: /scoreboard/
 
     let rows = statsToCompare.map(stat => `
       <tr>
-        <td>${getStat(team1, stat.key)}</td>
-        <td style="font-weight:bold; color:#999; font-size:0.9em;">${stat.label}</td>
-        <td>${getStat(team2, stat.key)}</td>
+        <td>${escapeHtml(getStat(team1, stat.key))}</td>
+        <td style="font-weight:bold; color:#999; font-size:0.9em;">${escapeHtml(stat.label)}</td>
+        <td>${escapeHtml(getStat(team2, stat.key))}</td>
       </tr>
     `).join('');
 
@@ -340,9 +466,9 @@ permalink: /scoreboard/
         <table class="stats-table">
           <thead>
             <tr>
-              <th>${team1.team.abbreviation}</th>
+              <th>${escapeHtml(team1.team.abbreviation)}</th>
               <th>Stat</th>
-              <th>${team2.team.abbreviation}</th>
+              <th>${escapeHtml(team2.team.abbreviation)}</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -352,15 +478,19 @@ permalink: /scoreboard/
   }
 
   function toggleTeamStats(index, btn) {
+    activeTeamTab = index;
     // Hide all stats containers
     document.querySelectorAll('[id^="team-stats-"]').forEach(el => el.style.display = 'none');
     // Show selected
-    document.getElementById('team-stats-' + index).style.display = 'block';
+    const target = document.getElementById('team-stats-' + index);
+    if (target) target.style.display = 'block';
     
     // Update button states
-    const group = btn.parentElement;
-    group.querySelectorAll('button').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
+    if (btn && btn.parentElement) {
+        const group = btn.parentElement;
+        group.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+    }
   }
 
   function renderPlayerStats(summary, pickedPlayerId) {
@@ -395,10 +525,11 @@ permalink: /scoreboard/
       playersWithVal.sort((a, b) => b.score - a.score);
 
       const rows = playersWithVal.map(({ player, stats, score }) => {
-        const name = player.athlete ? (player.athlete.shortName || player.athlete.displayName) : (player.displayName || 'Team');
+        const rawName = player.athlete ? (player.athlete.shortName || player.athlete.displayName) : (player.displayName || 'Team');
+        const name = escapeHtml(rawName);
         const activeIndicator = player.active ? '🏀 ' : '';
-        const cells = indices.map(idx => `<td>${idx !== -1 ? (stats[idx] || '0') : '-'}</td>`).join('');
-        const tooltip = getValTooltip(stats, labels).replace(/"/g, '&quot;');
+        const cells = indices.map(idx => `<td>${idx !== -1 ? escapeHtml(stats[idx] || '0') : '-'}</td>`).join('');
+        const tooltip = escapeHtml(getValTooltip(stats, labels));
 
         const isPicked = player.athlete && String(player.athlete.id) === String(pickedPlayerId);
         const rowClass = isPicked ? 'picked-row' : '';
@@ -440,6 +571,11 @@ permalink: /scoreboard/
   });
 
   window.addEventListener('hashchange', () => {
+      stopLivePolling();
       loadStats(localStorage.getItem('league') || 'mens');
+  });
+
+  window.addEventListener('beforeunload', () => {
+      stopLivePolling();
   });
 </script>

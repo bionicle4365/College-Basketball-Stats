@@ -1,6 +1,35 @@
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+async function hashPassword(password, salt = '') {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password + ':' + salt);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 function checkAuth() {
     if (localStorage.getItem('isLoggedIn') !== 'true') {
         window.location.href = '/College-Basketball-Stats/login';
+        return;
+    }
+    if (typeof auth !== 'undefined' && auth) {
+        auth.onAuthStateChanged(user => {
+            if (!user) {
+                localStorage.removeItem('isLoggedIn');
+                localStorage.removeItem('username');
+                localStorage.removeItem('displayName');
+                window.location.href = '/College-Basketball-Stats/login';
+            }
+        });
     }
 }
 
