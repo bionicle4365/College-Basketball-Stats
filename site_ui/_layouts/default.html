@@ -7,17 +7,17 @@
     <link rel="manifest" href="{{ site.baseurl }}/manifest.json">
     <link rel="icon" href="https://a.espncdn.com/i/teamlogos/ncaa/500/152.png" type="image/png">
     <link rel="apple-touch-icon" href="https://a.espncdn.com/i/teamlogos/ncaa/500/152.png">
-    <link rel="stylesheet" href="{{ site.baseurl }}/styles.css">
+    <link rel="stylesheet" href="{{ site.baseurl }}/styles.css?v={{ site.time | date: '%s' }}">
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     {% if jekyll.environment == "development" %}
-    <script src="{{ site.baseurl }}/common.local.js"></script>
+    <script src="{{ site.baseurl }}/common.local.js?v={{ site.time | date: '%s' }}"></script>
     <script>console.log("Debug Mode: Using common.local.js");</script>
     {% else %}
-    <script src="{{ site.baseurl }}/common.js"></script>
+    <script src="{{ site.baseurl }}/common.js?v={{ site.time | date: '%s' }}"></script>
     {% endif %}
-    <script src="{{ site.baseurl }}/helpers.js"></script>
+    <script src="{{ site.baseurl }}/helpers.js?v={{ site.time | date: '%s' }}"></script>
 </head>
 <body>
     <header class="site-header">

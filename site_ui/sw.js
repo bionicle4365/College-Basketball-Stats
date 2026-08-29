@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cbb-stats-v4';
+const CACHE_NAME = 'cbb-stats-v5';
 const BASE_URL = '/College-Basketball-Stats';
 const ASSETS = [
   BASE_URL + '/',
@@ -34,7 +34,21 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Cache-first strategy for static assets
+  // Network-first strategy for local scripts/styles so updates take effect immediately
+  if (event.request.url.includes('/helpers.js') || event.request.url.includes('/styles.css') || event.request.url.includes('/common')) {
+    event.respondWith(
+      fetch(event.request)
+        .then((response) => {
+          const resClone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, resClone));
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // Cache-first strategy for other static assets
   event.respondWith(
     caches.match(event.request)
       .then((response) => {
