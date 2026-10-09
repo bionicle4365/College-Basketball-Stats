@@ -11,32 +11,57 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // User Settings: authenticated users can read; only the owner can modify
+    // User Settings: authenticated users can read; only the owner can modify their own settings
     match /user_settings/{userId} {
       allow read: if isAuthenticated();
-      allow write: if isOwner(userId);
+      allow write: if isOwner(userId) &&
+        request.resource.data.keys().hasOnly(['displayName', 'favoriteTeamId']) &&
+        (!('displayName' in request.resource.data) || request.resource.data.displayName is string) &&
+        (!('favoriteTeamId' in request.resource.data) || request.resource.data.favoriteTeamId is string);
     }
 
     // Groups: authenticated users can read and create groups
-    // Users can join by adding their own UID to the members array
+    // Users can join by adding strictly their own UID to the members array
     match /groups/{groupId} {
       allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && request.resource.data.members.hasAny([request.auth.uid]);
+      allow create: if isAuthenticated() &&
+        request.resource.data.keys().hasAll(['name', 'teamId', 'league', 'members', 'isPrivate']) &&
+        request.resource.data.name is string &&
+        request.resource.data.name.size() > 0 &&
+        request.resource.data.name.size() <= 100 &&
+        request.resource.data.members is list &&
+        request.resource.data.members.size() == 1 &&
+        request.resource.data.members[0] == request.auth.uid &&
+        (!('password' in request.resource.data));
       allow update: if isAuthenticated() && 
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members']) &&
-        request.resource.data.members.hasAll(resource.data.members) &&
-        request.resource.data.members.hasAny([request.auth.uid]);
-      allow delete: if isAuthenticated() && resource.data.members[0] == request.auth.uid;
+        request.resource.data.members is list &&
+        request.resource.data.members.size() == resource.data.members.size() + 1 &&
+        request.resource.data.members.removeAll(resource.data.members) == [request.auth.uid];
+      allow delete: if isAuthenticated() && 
+        resource.data.members is list &&
+        resource.data.members.size() > 0 &&
+        resource.data.members[0] == request.auth.uid;
     }
 
-    // Team Game Picks (e.g. 152m, 152w, etc.)
-    // Users can only write and update their own UID and timestamp fields on any game pick document
+    // Team Game Picks (strictly formatted as teamId + league suffix, e.g. 152m, 152w)
+    // Constrained regex matching ensures this rule never collides with or overrides root collections
     match /{collectionName}/{gameId} {
-      allow read: if isAuthenticated();
+      function isPickCollection() {
+        return collectionName.matches('^[0-9]+[mw]$');
+      }
+
+      allow read: if isAuthenticated() && isPickCollection();
       allow create: if isAuthenticated() && 
-        request.resource.data.keys().hasOnly([request.auth.uid, request.auth.uid + '_time']);
+        isPickCollection() &&
+        request.resource.data.keys().hasOnly([request.auth.uid, request.auth.uid + '_time']) &&
+        request.resource.data[request.auth.uid] is string &&
+        request.resource.data[request.auth.uid + '_time'] is number;
       allow update: if isAuthenticated() && 
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly([request.auth.uid, request.auth.uid + '_time']);
+        isPickCollection() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([request.auth.uid, request.auth.uid + '_time']) &&
+        request.resource.data[request.auth.uid] is string &&
+        request.resource.data[request.auth.uid + '_time'] is number;
       allow delete: if false;
     }
   }

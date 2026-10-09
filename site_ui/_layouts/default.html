@@ -4,6 +4,9 @@
     <title>{{ page.title }} - {{ site.title }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#cc0000">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://a.espncdn.com; connect-src 'self' https://site.api.espn.com https://site.web.api.espn.com https://*.googleapis.com https://*.firebaseio.com https://*.firebase.com wss://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; frame-src https://*.firebaseapp.com; font-src 'self'; base-uri 'self'; form-action 'self';">
+    <meta http-equiv="X-Content-Type-Options" content="nosniff">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
     <link rel="manifest" href="{{ site.baseurl }}/manifest.json">
     <link rel="icon" href="https://a.espncdn.com/i/teamlogos/ncaa/500/152.png" type="image/png">
     <link rel="apple-touch-icon" href="https://a.espncdn.com/i/teamlogos/ncaa/500/152.png">
@@ -79,7 +82,7 @@
             const localTeamId = getFavoriteTeamId();
             const logo = document.getElementById('user-team-logo');
             if (logo) {
-                logo.src = `https://a.espncdn.com/i/teamlogos/ncaa/500/${localTeamId}.png`;
+                logo.src = `https://a.espncdn.com/i/teamlogos/ncaa/500/${encodeURIComponent(localTeamId)}.png`;
                 logo.style.display = 'block';
             }
             const localName = localStorage.getItem('displayName') || localStorage.getItem('username');
@@ -97,7 +100,7 @@
 
                             const teamId = data.favoriteTeamId || localTeamId;
                             if (logo) {
-                                logo.src = `https://a.espncdn.com/i/teamlogos/ncaa/500/${teamId}.png`;
+                                logo.src = `https://a.espncdn.com/i/teamlogos/ncaa/500/${encodeURIComponent(teamId)}.png`;
                                 logo.style.display = 'block';
                             }
                         }).catch(() => {});
@@ -320,7 +323,14 @@
                     const leagueName = target.league === 'womens' ? "Women's" : "Men's";
                     const opponent = target.game.competitions[0].competitors.find(c => String(c.team.id) !== String(FAV_TEAM_ID));
                     const opponentName = escapeHtml(opponent ? (opponent.team.shortDisplayName || opponent.team.displayName) : 'Opponent');
-                    banner.innerHTML = `<div style="background-color: #cc0000; color: white; text-align: center; padding: 10px; cursor: pointer; font-weight: bold;" onclick="goToGameBanner('${escapeHtml(target.league)}', '${escapeHtml(target.game.id)}')">${leagueName} Team vs ${opponentName} today at ${timeStr} <span style="font-size: 0.9em; text-decoration: underline; margin-left: 10px;">Make Your Pick!</span></div>`;
+                    banner.innerHTML = '';
+                    const bannerDiv = document.createElement('div');
+                    bannerDiv.style.cssText = 'background-color: #cc0000; color: white; text-align: center; padding: 10px; cursor: pointer; font-weight: bold;';
+                    bannerDiv.innerHTML = `${leagueName} Team vs ${opponentName} today at ${timeStr} <span style="font-size: 0.9em; text-decoration: underline; margin-left: 10px;">Make Your Pick!</span>`;
+                    bannerDiv.addEventListener('click', () => {
+                        goToGameBanner(target.league, String(target.game.id));
+                    });
+                    banner.appendChild(bannerDiv);
                     banner.style.display = 'block';
                 }
             }

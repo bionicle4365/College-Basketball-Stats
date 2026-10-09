@@ -5,15 +5,60 @@ function escapeHtml(str) {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
+        .replace(/'/g, '&#39;');
+}
+
+function sanitizeUrl(url) {
+    if (!url) return '';
+    const trimmed = String(url).trim();
+    if (/^(https?:|\/|\.\/)/i.test(trimmed)) {
+        return escapeHtml(trimmed);
+    }
+    return '';
+}
+
+function generateSalt(byteLength = 16) {
+    const buffer = new Uint8Array(byteLength);
+    crypto.getRandomValues(buffer);
+    return Array.from(buffer, b => b.toString(16).padStart(2, '0')).join('');
 }
 
 async function hashPassword(password, salt = '') {
     const encoder = new TextEncoder();
-    const data = encoder.encode(password + ':' + salt);
+    const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        encoder.encode(password),
+        { name: 'PBKDF2' },
+        false,
+        ['deriveBits']
+    );
+    const derivedBits = await crypto.subtle.deriveBits(
+        {
+            name: 'PBKDF2',
+            salt: encoder.encode(salt),
+            iterations: 100000,
+            hash: 'SHA-256'
+        },
+        keyMaterial,
+        256
+    );
+    const hashArray = Array.from(new Uint8Array(derivedBits));
+    return 'pbkdf2:' + hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function verifyPassword(enteredPassword, salt, storedHash) {
+    if (!storedHash || !enteredPassword) return false;
+    if (storedHash.startsWith('pbkdf2:')) {
+        const computed = await hashPassword(enteredPassword, salt);
+        return computed === storedHash;
+    }
+    // Backward compatibility for legacy single-round SHA-256 hashes
+    const encoder = new TextEncoder();
+    const data = encoder.encode(enteredPassword + ':' + (salt || ''));
     const hashBuffer = await crypto.subtle.digest('SHA-256', data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    const legacyHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return legacyHash === storedHash;
 }
 
 function checkAuth() {
@@ -118,9 +163,12 @@ function getCollectionName(teamId, league) {
 }
 
 function getTeamLogoHtml(team) {
-    const logoLight = team.logos?.[0]?.href || team.logo;
+    if (!team) return '';
+    const logoLight = team.logos?.[0]?.href || team.logo || '';
     const logoDark = team.logos?.[1]?.href || logoLight;
-    return `<img src="${logoLight}" class="team-logo logo-light" alt=""><img src="${logoDark}" class="team-logo logo-dark" alt="">`;
+    const safeLight = sanitizeUrl(logoLight);
+    const safeDark = sanitizeUrl(logoDark);
+    return `<img src="${safeLight}" class="team-logo logo-light" alt=""><img src="${safeDark}" class="team-logo logo-dark" alt="">`;
 }
 
 async function fetchAllTeams(league) {

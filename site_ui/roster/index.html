@@ -3,7 +3,7 @@ layout: default
 title: Roster Stats
 permalink: /roster/
 ---
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <div class="roster-container">
         <h2 id="team-name">Team Roster & Stats</h2>
         <div id="player-content" style="overflow-x: auto;">
@@ -38,7 +38,7 @@ permalink: /roster/
             });
 
         // Try to fetch roster
-        const ROSTER_URL = `https://site.api.espn.com/apis/site/v2/sports/basketball/${SPORT_PATH}/teams/${TEAM_ID}?enable=roster,stats`;
+        const ROSTER_URL = `https://site.api.espn.com/apis/site/v2/sports/basketball/${encodeURIComponent(SPORT_PATH)}/teams/${encodeURIComponent(TEAM_ID)}?enable=roster,stats`;
 
         
         fetch(ROSTER_URL)
@@ -70,12 +70,12 @@ permalink: /roster/
                     player.birthPlace?.city ? `${player.birthPlace.city}, ${player.birthPlace.stateAbbrev || player.birthPlace.country}` : '-'
                 ];
 
-                const img = player.headshot ? escapeHtml(player.headshot.href) : 'https://a.espncdn.com/i/headshots/nophoto.png';
+                const img = player.headshot ? sanitizeUrl(player.headshot.href) : 'https://a.espncdn.com/i/headshots/nophoto.png';
                 const playerId = escapeHtml(player.id);
                 const safeName = escapeHtml(player.displayName);
                 const safeJersey = player.jersey ? escapeHtml(player.jersey) : '';
                 
-                html += `<tr class="player-row" onclick="toggleStats('${playerId}')" style="cursor: pointer;">
+                html += `<tr class="player-row" data-player-id="${playerId}" style="cursor: pointer;">
                     <td><img src="${img}" class="headshot"><strong>${safeName}</strong> <span style="color:#888; font-size:0.8em">#${safeJersey}</span></td>
                     ${stats.map(s => `<td>${escapeHtml(s)}</td>`).join('')}
                 </tr>
@@ -88,17 +88,26 @@ permalink: /roster/
                 </tr>`;
             });
             html += '</tbody></table>';
-            document.getElementById('player-content').innerHTML = html;
+            const playerContent = document.getElementById('player-content');
+            playerContent.innerHTML = html;
         }
 
-        function toggleStats(id) {
+        document.getElementById('player-content').addEventListener('click', (e) => {
+            const row = e.target.closest('.player-row');
+            if (row && row.dataset.playerId) {
+                toggleStats(row.dataset.playerId);
+            }
+        });
+
+        function toggleStats(rawId) {
+            const id = String(rawId).replace(/[^a-zA-Z0-9_-]/g, '');
             const row = document.getElementById('stats-' + id);
             const content = document.getElementById('stats-content-' + id);
             
             if (row.style.display === 'none') {
                 row.style.display = 'table-row';
                 if (!content.hasAttribute('data-loaded')) {
-                    const gamelogUrl = `https://site.web.api.espn.com/apis/common/v3/sports/basketball/${SPORT_PATH}/athletes/${id}/gamelog`;
+                    const gamelogUrl = `https://site.web.api.espn.com/apis/common/v3/sports/basketball/${encodeURIComponent(SPORT_PATH)}/athletes/${encodeURIComponent(id)}/gamelog`;
 
                     fetch(gamelogUrl)
                         .then(r => r.json())

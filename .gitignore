@@ -1,3 +1,8 @@
 site_ui/_site/**
 site_ui/common.local.js
 ./*.json
+.env
+.env.*
+*.pem
+*.key
+*.p12

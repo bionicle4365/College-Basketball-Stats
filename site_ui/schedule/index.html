@@ -82,7 +82,7 @@ permalink: /schedule/
                     const logo = getTeamLogoHtml(opponent.team);
                     const oppName = escapeHtml(opponent.team.shortDisplayName || opponent.team.displayName);
 
-                    html += `<tr onclick="window.location.href='/College-Basketball-Stats/scoreboard#${escapeHtml(game.id)}'">
+                    html += `<tr class="schedule-game-row" data-game-id="${escapeHtml(game.id)}" style="cursor: pointer;">
                         <td>${dateStr}</td>
                         <td>${vsAt} ${logo}${oppName}</td>
                         <td>${result}</td>
@@ -92,14 +92,22 @@ permalink: /schedule/
                 });
                 
                 html += '</tbody></table>';
-                document.getElementById('schedule-content').innerHTML = html;
+                const schedContent = document.getElementById('schedule-content');
+                schedContent.innerHTML = html;
+
+                schedContent.addEventListener('click', (e) => {
+                    const row = e.target.closest('.schedule-game-row');
+                    if (row && row.dataset.gameId) {
+                        window.location.href = `/College-Basketball-Stats/scoreboard#${encodeURIComponent(row.dataset.gameId)}`;
+                    }
+                });
 
                 // Fetch details for completed games to get Top Player
                 events.forEach(event => {
                     const game = event.competitions[0];
                     
                     const summaryPromise = (game.status.type.state === 'post') 
-                        ? fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${SPORT_PATH}/summary?event=${game.id}`).then(r => r.json())
+                        ? fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${encodeURIComponent(SPORT_PATH)}/summary?event=${encodeURIComponent(game.id)}`).then(r => r.json())
                         : Promise.resolve(null);
                     const pickPromise = (USER_UID && typeof db !== 'undefined') 
                         ? db.collection(COLLECTION_NAME).doc(String(event.id)).get().catch(() => null)

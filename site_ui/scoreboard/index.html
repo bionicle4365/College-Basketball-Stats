@@ -40,7 +40,7 @@ permalink: /scoreboard/
   }
 
   function fetchPick(gameId, type) {
-      if (!USER_UID) return Promise.resolve(null);
+      if (!USER_UID || !gameId || !/^[0-9]+$/.test(String(gameId).trim())) return Promise.resolve(null);
       const collectionName = getCollectionName(TEAM_ID, type);
       return db.collection(collectionName).doc(String(gameId)).get()
           .then(doc => doc.exists ? doc.data()[USER_UID] : null)
@@ -49,12 +49,22 @@ permalink: /scoreboard/
 
   function savePick(gameId, gameDateStr) {
       const select = document.getElementById('player-pick-select');
-      const playerId = select.value;
+      const playerId = select ? select.value : null;
       const message = document.getElementById('pick-message');
       
+      if (!gameId || !/^[0-9]+$/.test(String(gameId).trim())) {
+          if (message) {
+              message.textContent = "Invalid game ID.";
+              message.style.color = "red";
+          }
+          return;
+      }
+
       if (!playerId) {
-          message.textContent = "Please select a player.";
-          message.style.color = "red";
+          if (message) {
+              message.textContent = "Please select a player.";
+              message.style.color = "red";
+          }
           return;
       }
 
@@ -112,10 +122,11 @@ permalink: /scoreboard/
     }
 
     const urlParams = new URLSearchParams(window.location.search);
-    const gameId = urlParams.get('gameId') || window.location.hash.substring(1);
+    const rawGameId = urlParams.get('gameId') || window.location.hash.substring(1);
+    const gameId = (rawGameId && /^[0-9]+$/.test(rawGameId.trim())) ? rawGameId.trim() : null;
 
     if (gameId) {
-        const summaryUrl = ENDPOINTS[type].replace('scoreboard', 'summary') + '?event=' + gameId;
+        const summaryUrl = ENDPOINTS[type].replace('scoreboard', 'summary') + '?event=' + encodeURIComponent(gameId);
         fetch(summaryUrl).then(r => r.json()).then(summary => {
             const state = summary.header.competitions[0].status.type.state;
             if (state === 'in') {
@@ -342,7 +353,7 @@ permalink: /scoreboard/
         <div class="live-status-container">
           <div class="live-badge"><span class="live-pulse"></span> LIVE</div>
           <span class="live-clock-detail">${status}</span>
-          <button class="live-refresh-btn" onclick="loadStats('${type || getLeague()}', true)" title="Refresh Live Data">&#x21bb; Live</button>
+          <button class="live-refresh-btn" title="Refresh Live Data">&#x21bb; Live</button>
         </div>
       `;
     }
@@ -420,7 +431,7 @@ permalink: /scoreboard/
                     <option value="">-- Select Player --</option>
                     ${options}
                 </select>
-                <button onclick="savePick('${escapeHtml(gameId)}', '${safeGameDate}')" style="padding: 8px 16px; background: #cc0000; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Save</button>
+                <button id="save-pick-btn" data-game-id="${escapeHtml(gameId)}" data-game-date="${safeGameDate}" style="padding: 8px 16px; background: #cc0000; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Save</button>
             </div>
             <div id="pick-message" style="margin-top: 10px; height: 20px; font-weight: bold;"></div>
         </div>
@@ -559,11 +570,34 @@ permalink: /scoreboard/
 
     const toggleButtons = sortedPlayers.map((teamBox, index) => {
       const activeClass = index === 0 ? 'active' : '';
-      const teamName = teamBox.team.abbreviation || teamBox.team.shortDisplayName;
-      return `<button class="${activeClass}" onclick="toggleTeamStats(${index}, this)">${teamName}</button>`;
+      const teamName = escapeHtml(teamBox.team.abbreviation || teamBox.team.shortDisplayName);
+      return `<button class="${activeClass}" data-team-index="${index}">${teamName}</button>`;
     }).join('');
 
     return `<div class="controls" style="margin-top: 10px; margin-bottom: 10px;"><div class="btn-group">${toggleButtons}</div></div>` + teamHtmls.join('');
+  }
+
+  // Event delegation on game-display
+  const gameDisplayContainer = document.getElementById('game-display');
+  if (gameDisplayContainer) {
+      gameDisplayContainer.addEventListener('click', (e) => {
+          const saveBtn = e.target.closest('#save-pick-btn');
+          if (saveBtn) {
+              savePick(saveBtn.dataset.gameId, saveBtn.dataset.gameDate);
+              return;
+          }
+          const refreshBtn = e.target.closest('.live-refresh-btn');
+          if (refreshBtn) {
+              loadStats(localStorage.getItem('league') || 'mens', true);
+              return;
+          }
+          const teamBtn = e.target.closest('.btn-group button');
+          if (teamBtn && teamBtn.dataset.teamIndex !== undefined) {
+              const idx = parseInt(teamBtn.dataset.teamIndex, 10);
+              toggleTeamStats(idx, teamBtn);
+              return;
+          }
+      });
   }
 
   // Instant load if already authenticated, refresh silently when Firebase user confirms
