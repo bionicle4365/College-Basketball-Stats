@@ -28,49 +28,50 @@ permalink: /settings/
     const sportPath = getSportPath();
 
     // Fetch teams from ESPN API dynamically according to active league
-    fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${sportPath}/teams?limit=1000`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.sports && data.sports[0].leagues && data.sports[0].leagues[0].teams) {
-                teamsData = data.sports[0].leagues[0].teams.map(t => t.team);
+    fetchAllTeams(getLeague()).then(teams => {
+        teamsData = teams;
 
-                // Load current setting
-                auth.onAuthStateChanged(user => {
-                    if (user) {
-                        db.collection('user_settings').doc(user.uid).get().then(doc => {
-                            if (doc.exists) {
-                                const data = doc.data();
-                                if (data.favoriteTeamId) {
-                                    const team = teamsData.find(t => t.id === data.favoriteTeamId);
-                                    if (team) teamInput.value = team.displayName;
-                                    localStorage.setItem('favoriteTeamId', data.favoriteTeamId);
-                                }
-                                if (data.displayName) {
-                                    document.getElementById('display-name').value = data.displayName;
-                                }
+        const updateCurrentTeamDisplay = (favTeamId) => {
+            const team = teamsData.find(t => t.id === favTeamId);
+            if (team) teamInput.value = team.displayName;
+        };
+
+        const currentTeamId = getFavoriteTeamId();
+        if (currentTeamId) updateCurrentTeamDisplay(currentTeamId);
+
+        const storedName = localStorage.getItem('displayName');
+        if (storedName) document.getElementById('display-name').value = storedName;
+
+        if (typeof auth !== 'undefined' && auth) {
+            auth.onAuthStateChanged(user => {
+                if (user && typeof db !== 'undefined' && db) {
+                    db.collection('user_settings').doc(user.uid).get().then(doc => {
+                        if (doc.exists) {
+                            const data = doc.data();
+                            if (data.favoriteTeamId) {
+                                updateCurrentTeamDisplay(data.favoriteTeamId);
+                                localStorage.setItem('favoriteTeamId', data.favoriteTeamId);
                             }
-                        });
-                    } else {
-                        const currentTeamId = getFavoriteTeamId();
-                        if (currentTeamId) {
-                            const currentTeam = teamsData.find(t => t.id === currentTeamId);
-                            if (currentTeam) teamInput.value = currentTeam.displayName;
+                            if (data.displayName) {
+                                document.getElementById('display-name').value = data.displayName;
+                                localStorage.setItem('displayName', data.displayName);
+                            }
                         }
-                        document.getElementById('display-name').value = localStorage.getItem('displayName') || '';
-                    }
-                });
-            }
-        });
+                    }).catch(console.error);
+                }
+            });
+        }
+    }).catch(console.error);
 
     teamInput.addEventListener('input', function() {
-        const val = this.value.toLowerCase();
+        const val = this.value.toLowerCase().trim();
         teamsDropdown.innerHTML = '';
         if (!val) {
             teamsDropdown.style.display = 'none';
             return;
         }
         
-        const matches = teamsData.filter(t => t.displayName.toLowerCase().includes(val) || (t.nickname && t.nickname.toLowerCase().includes(val)));
+        const matches = teamsData.filter(t => (t.displayName && t.displayName.toLowerCase().includes(val)) || (t.nickname && t.nickname.toLowerCase().includes(val)) || (t.shortDisplayName && t.shortDisplayName.toLowerCase().includes(val)));
         if (matches.length > 0) {
             matches.slice(0, 15).forEach(team => {
                 const div = document.createElement('div');
@@ -97,14 +98,19 @@ permalink: /settings/
     });
 
     function saveSettings() {
-        const selectedName = teamInput.value;
-        const selectedTeam = teamsData.find(t => t.displayName === selectedName);
+        const selectedName = teamInput.value.trim();
+        let selectedTeam = teamsData.find(t => t.displayName.toLowerCase() === selectedName.toLowerCase());
+        if (!selectedTeam && selectedName.length >= 2) {
+            selectedTeam = teamsData.find(t => (t.displayName && t.displayName.toLowerCase().includes(selectedName.toLowerCase())) || (t.shortDisplayName && t.shortDisplayName.toLowerCase() === selectedName.toLowerCase()));
+            if (selectedTeam) teamInput.value = selectedTeam.displayName;
+        }
+
         const displayName = document.getElementById('display-name').value.trim();
         const msg = document.getElementById('message');
         
         if (selectedTeam) {
-            const user = auth.currentUser;
-            if (user) {
+            const user = (typeof auth !== 'undefined' && auth) ? auth.currentUser : null;
+            if (user && typeof db !== 'undefined' && db) {
                 db.collection('user_settings').doc(user.uid).set({
                     favoriteTeamId: selectedTeam.id,
                     displayName: displayName
@@ -112,6 +118,14 @@ permalink: /settings/
                     localStorage.setItem('favoriteTeamId', selectedTeam.id);
                     localStorage.setItem('displayName', displayName);
                     msg.textContent = 'Settings saved! Redirecting to scoreboard...';
+                    msg.style.backgroundColor = '#d4edda';
+                    msg.style.color = '#155724';
+                    msg.style.display = 'block';
+                    setTimeout(() => window.location.href = '/College-Basketball-Stats/scoreboard', 1200);
+                }).catch(() => {
+                    localStorage.setItem('favoriteTeamId', selectedTeam.id);
+                    localStorage.setItem('displayName', displayName);
+                    msg.textContent = 'Settings saved locally! Redirecting to scoreboard...';
                     msg.style.backgroundColor = '#d4edda';
                     msg.style.color = '#155724';
                     msg.style.display = 'block';

@@ -150,7 +150,8 @@ body.dark-mode .stats-row { background-color: #2d2d2d; color: #e0e0e0; }
 .team-score { font-size: 2.5em; font-weight: bold; color: #333; }
 .vs { color: #999; font-size: 0.9em; margin: 0 10px; }
 .game-info { border-top: 1px solid #eee; padding-top: 15px; font-size: 1.0em; color: #555; }
-.error { color: #cc0000; }
+.error { color: #cc0000; padding: 15px; text-align: center; font-weight: 500; }
+body.dark-mode .error { color: #ff6b6b; }
 .leaders { margin-top: 10px; font-size: 0.9em; text-align: left; color: #555; }
 .leader-row { display: flex; justify-content: space-between; margin-bottom: 2px; }
 .stats-table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.9em; }
@@ -258,7 +259,8 @@ body.dark-mode .standings-table tr.highlight-team { background-color: #1b3a1e; c
 .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center; }
 .modal-box { background: white; padding: 20px; border-radius: 8px; max-width: 90%; width: 550px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); position: relative; max-height: 85vh; overflow-y: auto; }
 .modal-close { position: absolute; top: 10px; right: 15px; font-size: 1.5rem; cursor: pointer; color: #666; line-height: 1; }
-.modal-body { font-size: 0.9em; line-height: 1.4; margin-top: 10px; }
+.modal-close:hover { color: #cc0000; }
+.modal-body { font-size: 0.9em; line-height: 1.5; margin-top: 10px; white-space: pre-wrap; font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, Courier, monospace; }
 
 .game-matrix-table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.85rem; }
 .game-matrix-table th, .game-matrix-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #eee; }

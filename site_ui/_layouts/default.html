@@ -43,7 +43,7 @@
             <div style="position: relative;">
                 <img id="user-team-logo" style="width: 3rem; height: 3rem; margin-right: 10px; display: none; background-color: white; border-radius: 50%; padding: 2px; cursor: pointer;" onclick="toggleTeamSelector()">
                 <div id="team-selector" style="display:none; position: absolute; top: 110%; right: 0; background: white; padding: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); border-radius: 4px; z-index: 1000; width: 250px; color: black;">
-                    <input type="text" id="team-search-input" placeholder="Search Team" onkeyup="searchTeams()" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 3px; box-sizing: border-box; margin-bottom: 5px;">
+                    <input type="text" id="team-search-input" placeholder="Search Team" oninput="searchTeams()" onkeyup="searchTeams()" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 3px; box-sizing: border-box; margin-bottom: 5px;">
                     <div id="search-results" style="max-height: 200px; overflow-y: auto;"></div>
                 </div>
             </div>
@@ -76,20 +76,34 @@
             userDropdown.style.display = 'flex';
             userDropdown.style.alignItems = 'center';
 
-            auth.onAuthStateChanged(user => {
-                if (user) {
-                    db.collection('user_settings').doc(user.uid).get().then(doc => {
-                        const data = doc.exists ? doc.data() : {};
-                        const displayName = data.displayName || 'User';
-                        document.getElementById('username-display').textContent = displayName;
+            const localTeamId = getFavoriteTeamId();
+            const logo = document.getElementById('user-team-logo');
+            if (logo) {
+                logo.src = `https://a.espncdn.com/i/teamlogos/ncaa/500/${localTeamId}.png`;
+                logo.style.display = 'block';
+            }
+            const localName = localStorage.getItem('displayName') || localStorage.getItem('username');
+            if (localName) {
+                document.getElementById('username-display').textContent = localName;
+            }
 
-                        const teamId = data.favoriteTeamId || '152';
-                        const logo = document.getElementById('user-team-logo');
-                        logo.src = `https://a.espncdn.com/i/teamlogos/ncaa/500/${teamId}.png`;
-                        logo.style.display = 'block';
-                    });
-                }
-            });
+            if (typeof auth !== 'undefined' && auth) {
+                auth.onAuthStateChanged(user => {
+                    if (user && typeof db !== 'undefined' && db) {
+                        db.collection('user_settings').doc(user.uid).get().then(doc => {
+                            const data = doc.exists ? doc.data() : {};
+                            const displayName = data.displayName || localName || 'User';
+                            document.getElementById('username-display').textContent = displayName;
+
+                            const teamId = data.favoriteTeamId || localTeamId;
+                            if (logo) {
+                                logo.src = `https://a.espncdn.com/i/teamlogos/ncaa/500/${teamId}.png`;
+                                logo.style.display = 'block';
+                            }
+                        }).catch(() => {});
+                    }
+                });
+            }
         }
         
         // Update Dark Mode Button Text
@@ -121,19 +135,26 @@
         }
 
         let allTeams = [];
+        let isLoadingTeams = false;
 
         async function loadAllTeams() {
-            if (allTeams.length > 0) return;
-            const league = getLeague();
-            const sportPath = getSportPath(league);
+            if (allTeams.length > 0 || isLoadingTeams) return;
+            isLoadingTeams = true;
+            const resultsDiv = document.getElementById('search-results');
+            if (resultsDiv && resultsDiv.innerHTML === '') {
+                resultsDiv.innerHTML = '<div style="padding: 10px; color: #888; text-align: center; font-size: 0.9em;">Loading teams...</div>';
+            }
             try {
-                const response = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${sportPath}/teams?limit=1000`);
-                const data = await response.json();
-                if (data.sports && data.sports[0].leagues && data.sports[0].leagues[0].teams) {
-                    allTeams = data.sports[0].leagues[0].teams.map(t => t.team);
-                }
+                allTeams = await fetchAllTeams(getLeague());
             } catch (e) {
                 console.error("Error loading teams:", e);
+            } finally {
+                isLoadingTeams = false;
+                if (document.getElementById('team-search-input')?.value.length >= 2) {
+                    searchTeams();
+                } else if (resultsDiv && allTeams.length > 0 && resultsDiv.innerHTML.includes('Loading')) {
+                    resultsDiv.innerHTML = '';
+                }
             }
         }
 
@@ -155,8 +176,18 @@
             
             if (query.length < 2) return;
 
-            const matches = allTeams.filter(t => t.displayName.toLowerCase().includes(query) || (t.nickname && t.nickname.toLowerCase().includes(query)));
+            if (isLoadingTeams) {
+                resultsDiv.innerHTML = '<div style="padding: 10px; color: #888; text-align: center; font-size: 0.9em;">Loading teams...</div>';
+                return;
+            }
+
+            const matches = allTeams.filter(t => (t.displayName && t.displayName.toLowerCase().includes(query)) || (t.nickname && t.nickname.toLowerCase().includes(query)) || (t.shortDisplayName && t.shortDisplayName.toLowerCase().includes(query)));
             
+            if (matches.length === 0) {
+                resultsDiv.innerHTML = '<div style="padding: 8px; color: #888; text-align: center; font-size: 0.85em;">No teams found</div>';
+                return;
+            }
+
             matches.slice(0, 10).forEach(team => {
                 const div = document.createElement('div');
                 div.style.padding = '8px';
@@ -177,10 +208,12 @@
         function selectTeam(teamId) {
             localStorage.setItem('favoriteTeamId', teamId);
             
-            if (auth && auth.currentUser) {
+            if (typeof auth !== 'undefined' && auth && auth.currentUser && typeof db !== 'undefined' && db) {
                 db.collection('user_settings').doc(auth.currentUser.uid).set({
                     favoriteTeamId: teamId
                 }, { merge: true }).then(() => {
+                    window.location.reload();
+                }).catch(() => {
                     window.location.reload();
                 });
             } else {
@@ -189,7 +222,7 @@
         }
 
         window.onclick = function(event) {
-            if (!event.target.matches('.username-btn') && !event.target.matches('.league-btn')) {
+            if (!event.target.closest('#user-dropdown') && !event.target.closest('#league-dropdown')) {
                 var dropdowns = document.getElementsByClassName("dropdown-content");
                 for (var i = 0; i < dropdowns.length; i++) {
                     var openDropdown = dropdowns[i];
@@ -210,17 +243,24 @@
             }
         }
         function logout() {
-            auth.signOut().then(() => {
+            if (typeof auth !== 'undefined' && auth) {
+                auth.signOut().finally(() => {
+                    localStorage.removeItem('isLoggedIn');
+                    localStorage.removeItem('username');
+                    localStorage.removeItem('displayName');
+                    window.location.href = '/College-Basketball-Stats/login';
+                });
+            } else {
                 localStorage.removeItem('isLoggedIn');
                 localStorage.removeItem('username');
                 localStorage.removeItem('displayName');
                 window.location.href = '/College-Basketball-Stats/login';
-            });
+            }
         }
 
         function goToGameBanner(league, gameId) {
             localStorage.setItem('league', league);
-            window.location.href = `/College-Basketball-Stats/scoreboard?gameId=${gameId}`;
+            window.location.href = `/College-Basketball-Stats/scoreboard#${gameId}`;
         }
 
         (function() {

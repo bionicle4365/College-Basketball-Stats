@@ -36,6 +36,11 @@ permalink: /schedule/
                 const teamDisplayName = escapeHtml(data.team.displayName);
                 document.getElementById('team-name').textContent = `${teamDisplayName} Schedule`;
                 
+                if (events.length === 0) {
+                    document.getElementById('schedule-content').innerHTML = '<p class="loading" style="padding: 20px;">No scheduled games found for this season.</p>';
+                    return;
+                }
+
                 let html = `<table class="schedule-table">
                     <thead>
                         <tr>

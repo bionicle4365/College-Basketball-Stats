@@ -111,7 +111,8 @@ permalink: /scoreboard/
         display.innerHTML = '<div class="loading">Fetching latest scores...</div>';
     }
 
-    const gameId = window.location.hash.substring(1);
+    const urlParams = new URLSearchParams(window.location.search);
+    const gameId = urlParams.get('gameId') || window.location.hash.substring(1);
 
     if (gameId) {
         const summaryUrl = ENDPOINTS[type].replace('scoreboard', 'summary') + '?event=' + gameId;
@@ -562,15 +563,24 @@ permalink: /scoreboard/
     return `<div class="controls" style="margin-top: 10px; margin-bottom: 10px;"><div class="btn-group">${toggleButtons}</div></div>` + teamHtmls.join('');
   }
 
-  // Load Men's stats by default on page load
+  // Instant load if already authenticated, refresh silently when Firebase user confirms
+  if (localStorage.getItem('isLoggedIn') === 'true') {
+      loadStats(localStorage.getItem('league') || 'mens');
+  }
+
   auth.onAuthStateChanged(user => {
       if (user) {
           USER_UID = user.uid;
-          loadStats(localStorage.getItem('league') || 'mens');
+          loadStats(localStorage.getItem('league') || 'mens', true);
       }
   });
 
   window.addEventListener('hashchange', () => {
+      stopLivePolling();
+      loadStats(localStorage.getItem('league') || 'mens');
+  });
+
+  window.addEventListener('popstate', () => {
       stopLivePolling();
       loadStats(localStorage.getItem('league') || 'mens');
   });

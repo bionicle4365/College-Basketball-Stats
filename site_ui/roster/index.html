@@ -51,8 +51,8 @@ permalink: /roster/
                 renderTable(['Pos', 'Height', 'Weight', 'Class', 'Birthplace'], athletes, 'roster');
             })
             .catch(e => {
-                document.getElementById('roster-content').innerHTML = '<p>Error loading data.</p>';
-        });
+                document.getElementById('player-content').innerHTML = '<p class="error">Error loading data.</p>';
+            });
 
         function renderTable(headers, data, type) {
             let html = `<table class="roster-table"><thead><tr><th>Player</th>`;

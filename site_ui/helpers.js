@@ -122,3 +122,45 @@ function getTeamLogoHtml(team) {
     const logoDark = team.logos?.[1]?.href || logoLight;
     return `<img src="${logoLight}" class="team-logo logo-light" alt=""><img src="${logoDark}" class="team-logo logo-dark" alt="">`;
 }
+
+async function fetchAllTeams(league) {
+    const sportPath = getSportPath(league);
+    try {
+        const response = await fetch(`https://site.api.espn.com/apis/v2/sports/basketball/${sportPath}/standings`);
+        if (response.ok) {
+            const data = await response.json();
+            const teams = [];
+            if (data.children) {
+                data.children.forEach(conf => {
+                    if (conf.standings && conf.standings.entries) {
+                        conf.standings.entries.forEach(entry => {
+                            if (entry.team) teams.push(entry.team);
+                        });
+                    }
+                });
+            }
+            if (teams.length > 0) return teams;
+        }
+    } catch (e) {
+        console.warn('Standings endpoint unavailable for teams list, trying groups:', e);
+    }
+
+    try {
+        const response = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${sportPath}/groups`);
+        if (response.ok) {
+            const data = await response.json();
+            const teams = [];
+            if (data.groups) {
+                data.groups.forEach(g => {
+                    (g.children || []).forEach(conf => {
+                        (conf.teams || []).forEach(t => teams.push(t));
+                    });
+                });
+            }
+            return teams;
+        }
+    } catch (e) {
+        console.error('Error fetching teams:', e);
+    }
+    return [];
+}
