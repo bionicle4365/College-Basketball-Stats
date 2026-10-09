@@ -24,17 +24,20 @@
 </head>
 <body>
     <header class="site-header">
-        <div style="display: flex; align-items: center;">
-            <button class="mobile-menu-btn" onclick="toggleMobileMenu()">☰</button>
-            <a href="/College-Basketball-Stats/" class="site-title" style="margin-right: 20px;">{{ site.title }}</a>
+        <div class="header-left">
+            <button class="mobile-menu-btn" onclick="toggleMobileMenu()" aria-label="Toggle Navigation">☰</button>
+            <a href="/College-Basketball-Stats/" class="site-title">{{ site.title }}</a>
+            <div class="league-toggle" role="group" aria-label="Select League">
+                <button type="button" class="league-toggle-btn" id="league-btn-mens" onclick="selectLeague('mens')" title="NCAA Men's Basketball" aria-label="Men's Basketball">
+                    <span class="league-label-full">Men's</span>
+                    <span class="league-label-short">MBB</span>
+                </button>
+                <button type="button" class="league-toggle-btn" id="league-btn-womens" onclick="selectLeague('womens')" title="NCAA Women's Basketball" aria-label="Women's Basketball">
+                    <span class="league-label-full">Women's</span>
+                    <span class="league-label-short">WBB</span>
+                </button>
+            </div>
             <nav class="nav-links" id="nav-links">
-                <div id="league-dropdown" class="league-dropdown">
-                    <button id="league-display" class="league-btn" onclick="toggleDropdown('league-menu')">NCAA-M</button>
-                    <div id="league-menu" class="dropdown-content" style="left: 0; right: auto;">
-                        <button onclick="selectLeague('mens')">NCAA-M</button>
-                        <button onclick="selectLeague('womens')">NCAA-W</button>
-                    </div>
-                </div>
                 <a href="/College-Basketball-Stats/schedule">Schedule</a>
                 <a href="/College-Basketball-Stats/scoreboard">Scoreboard</a>
                 <a href="/College-Basketball-Stats/roster">Roster</a>
@@ -68,8 +71,14 @@
         {{ content }}
     </div>
     <script>
-        // Initialize league selection
-        const currentLeague = localStorage.getItem('league') || 'mens';
+        // Initialize league selection (supports ?league= query param or localStorage)
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlLeague = urlParams.get('league');
+        let currentLeague = localStorage.getItem('league') || 'mens';
+        if (urlLeague && (urlLeague === 'mens' || urlLeague === 'womens')) {
+            currentLeague = urlLeague;
+            localStorage.setItem('league', urlLeague);
+        }
         
         // Initialize Dark Mode
         const storedDarkMode = localStorage.getItem('darkMode');
@@ -77,7 +86,7 @@
             document.body.classList.add('dark-mode');
         }
 
-        document.getElementById('league-display').textContent = currentLeague === 'mens' ? 'NCAA-M' : 'NCAA-W';
+        updateLeagueToggleUI(currentLeague);
 
         if (localStorage.getItem('isLoggedIn') === 'true') {
             const userDropdown = document.getElementById('user-dropdown');
@@ -135,10 +144,25 @@
             document.getElementById('nav-links').classList.toggle('show');
         }
 
+        function updateLeagueToggleUI(league) {
+            const mensBtn = document.getElementById('league-btn-mens');
+            const womensBtn = document.getElementById('league-btn-womens');
+            const isMens = league === 'mens';
+            if (mensBtn) {
+                mensBtn.classList.toggle('active', isMens);
+                mensBtn.setAttribute('aria-pressed', isMens ? 'true' : 'false');
+            }
+            if (womensBtn) {
+                womensBtn.classList.toggle('active', !isMens);
+                womensBtn.setAttribute('aria-pressed', !isMens ? 'true' : 'false');
+            }
+        }
+
         function selectLeague(league) {
+            if (localStorage.getItem('league') === league) return;
             localStorage.setItem('league', league);
             allTeams = [];
-            document.getElementById('league-display').textContent = league === 'mens' ? 'NCAA-M' : 'NCAA-W';
+            updateLeagueToggleUI(league);
             window.location.href = window.location.pathname;
         }
 
