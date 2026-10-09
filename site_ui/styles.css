@@ -105,9 +105,8 @@ body.dark-mode .logo-dark { display: inline-block; }
 .groups-container { max-width: 800px; margin: 20px auto; padding: 20px; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
 .section { margin-bottom: 30px; }
 .group-card { border: 1px solid #eee; padding: 15px; margin-bottom: 10px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; }
-.group-name { font-weight: bold; font-size: 1.1em; }
-.input-group { display: flex; gap: 10px; margin-bottom: 15px; }
-.input-group input { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+.input-group { display: flex; gap: 10px; margin-bottom: 15px; align-items: center; }
+.input-group input:not([type="checkbox"]):not([type="radio"]) { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
 .leaderboard-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
 .leaderboard-table th, .leaderboard-table td { padding: 8px; text-align: left; border-bottom: 1px solid #eee; }
 
@@ -751,12 +750,35 @@ body.dark-mode .schedule-card-chip.correct-pick {
 @media (max-width: 600px) {
     .groups-container .input-group {
         flex-direction: column;
-        gap: 10px;
+        align-items: stretch;
+        gap: 12px;
     }
-    .groups-container .input-group input {
+    .groups-container .input-group input:not([type="checkbox"]):not([type="radio"]) {
         width: 100%;
         box-sizing: border-box;
         height: 44px;
+    }
+    .groups-container .input-group input[type="checkbox"] {
+        width: 18px !important;
+        height: 18px !important;
+        min-height: 18px !important;
+        min-width: 18px !important;
+        max-width: 18px !important;
+        max-height: 18px !important;
+        cursor: pointer;
+        margin: 0 !important;
+        accent-color: #cc0000;
+        align-self: center;
+        flex: none !important;
+    }
+    .groups-container .input-group label {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 4px 0;
+        cursor: pointer;
+        width: auto;
+        font-size: 0.95rem;
     }
     .groups-container .input-group button {
         width: 100%;
