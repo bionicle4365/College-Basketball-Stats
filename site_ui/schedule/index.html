@@ -40,22 +40,13 @@ permalink: /schedule/
                     return;
                 }
 
-                let html = `<table class="schedule-table">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Opponent</th>
-                            <th>Result/Time</th>
-                            <th>Top Player (VAL)</th>
-                            <th>Your Pick (VAL)</th>
-                        </tr>
-                    </thead>
-                    <tbody>`;
+                let tableRowsHtml = '';
+                let cardItemsHtml = '';
                 
                 events.forEach(event => {
                     const game = event.competitions[0];
                     const date = new Date(event.date);
-                    const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
                     
                     const myTeam = game.competitors.find(c => c.team.id === TEAM_ID);
                     if (!myTeam) return;
@@ -82,18 +73,57 @@ permalink: /schedule/
                     const logo = getTeamLogoHtml(opponent.team);
                     const oppName = escapeHtml(opponent.team.shortDisplayName || opponent.team.displayName);
 
-                    html += `<tr class="schedule-game-row" data-game-id="${escapeHtml(game.id)}" style="cursor: pointer;">
+                    // Desktop Table Row
+                    tableRowsHtml += `<tr class="schedule-game-row" data-game-id="${escapeHtml(game.id)}" style="cursor: pointer;">
                         <td>${dateStr}</td>
                         <td>${vsAt} ${logo}${oppName}</td>
                         <td>${result}</td>
                         <td id="val-${escapeHtml(game.id)}" style="font-size: 0.9em; color: #666;">-</td>
                         <td id="pick-${escapeHtml(game.id)}" style="font-size: 0.9em; color: #666;">-</td>
                     </tr>`;
+
+                    // Mobile Card
+                    cardItemsHtml += `
+                    <div class="schedule-card schedule-game-row" data-game-id="${escapeHtml(game.id)}">
+                        <div class="schedule-card-top">
+                            <span class="schedule-card-date">${dateStr}</span>
+                            <span class="schedule-card-result">${result}</span>
+                        </div>
+                        <div class="schedule-card-matchup">
+                            ${logo}
+                            <span>${vsAt} ${oppName}</span>
+                        </div>
+                        <div class="schedule-card-bottom">
+                            <div class="schedule-card-chip">
+                                <span class="chip-label">Top Player (VAL)</span>
+                                <span class="chip-val" id="val-card-${escapeHtml(game.id)}">-</span>
+                            </div>
+                            <div class="schedule-card-chip" id="pick-chip-${escapeHtml(game.id)}">
+                                <span class="chip-label">Your Pick</span>
+                                <span class="chip-val" id="pick-card-${escapeHtml(game.id)}">-</span>
+                            </div>
+                        </div>
+                    </div>`;
                 });
                 
-                html += '</tbody></table>';
+                const tableHtml = `
+                <table class="schedule-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Opponent</th>
+                            <th>Result/Time</th>
+                            <th>Top Player (VAL)</th>
+                            <th>Your Pick (VAL)</th>
+                        </tr>
+                    </thead>
+                    <tbody>${tableRowsHtml}</tbody>
+                </table>`;
+                
+                const cardsHtml = `<div class="schedule-cards-container">${cardItemsHtml}</div>`;
+                
                 const schedContent = document.getElementById('schedule-content');
-                schedContent.innerHTML = html;
+                schedContent.innerHTML = tableHtml + cardsHtml;
 
                 schedContent.addEventListener('click', (e) => {
                     const row = e.target.closest('.schedule-game-row');
@@ -136,9 +166,14 @@ permalink: /schedule/
 
                                     if (topPlayer) {
                                         const cell = document.getElementById(`val-${game.id}`);
+                                        const cardCell = document.getElementById(`val-card-${game.id}`);
+                                        const topPlayerStr = `<strong>${escapeHtml(topPlayer)}</strong> (${maxVal})`;
                                         if (cell) {
-                                            cell.innerHTML = `<strong>${escapeHtml(topPlayer)}</strong> (${maxVal})`;
+                                            cell.innerHTML = topPlayerStr;
                                             cell.style.color = '';
+                                        }
+                                        if (cardCell) {
+                                            cardCell.innerHTML = topPlayerStr;
                                         }
                                     }
 
@@ -150,12 +185,22 @@ permalink: /schedule/
                                             if (player) {
                                                 const val = calculateVal(player.stats, labels);
                                                 const pickCell = document.getElementById(`pick-${game.id}`);
+                                                const pickCardCell = document.getElementById(`pick-card-${game.id}`);
+                                                const pickChip = document.getElementById(`pick-chip-${game.id}`);
+                                                const playerName = player.athlete ? (player.athlete.shortName || player.athlete.displayName) : (playerMap[pickedPlayerId] || 'Unknown');
+                                                const pickStr = `<strong>${escapeHtml(playerName)}</strong> (${val})`;
+
                                                 if (pickCell) {
-                                                    const playerName = player.athlete ? (player.athlete.shortName || player.athlete.displayName) : (playerMap[pickedPlayerId] || 'Unknown');
-                                                    pickCell.innerHTML = `<strong>${escapeHtml(playerName)}</strong> (${val})`;
+                                                    pickCell.innerHTML = pickStr;
                                                     pickCell.style.color = '';
                                                     if (topPlayerId && String(pickedPlayerId) === String(topPlayerId)) {
                                                         pickCell.classList.add('correct-pick');
+                                                    }
+                                                }
+                                                if (pickCardCell) {
+                                                    pickCardCell.innerHTML = pickStr;
+                                                    if (topPlayerId && String(pickedPlayerId) === String(topPlayerId) && pickChip) {
+                                                        pickChip.classList.add('correct-pick');
                                                     }
                                                 }
                                             }
@@ -169,11 +214,16 @@ permalink: /schedule/
                                 const pickedPlayerId = pickDoc.data()[USER_UID];
                                 if (pickedPlayerId) {
                                     const pickCell = document.getElementById(`pick-${game.id}`);
+                                    const pickCardCell = document.getElementById(`pick-card-${game.id}`);
                                     if (pickCell && pickCell.textContent === '-') {
                                         const playerName = playerMap[pickedPlayerId] || 'Unknown';
                                         const valDisplay = (game.status.type.state === 'post') ? ' (0)' : '';
-                                        pickCell.innerHTML = `<strong>${escapeHtml(playerName)}</strong>${valDisplay}`;
+                                        const pickNameStr = `<strong>${escapeHtml(playerName)}</strong>${valDisplay}`;
+                                        pickCell.innerHTML = pickNameStr;
                                         pickCell.style.color = '';
+                                        if (pickCardCell) {
+                                            pickCardCell.innerHTML = pickNameStr;
+                                        }
                                     }
                                 }
                             }

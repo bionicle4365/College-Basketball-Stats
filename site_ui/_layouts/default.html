@@ -45,9 +45,14 @@
         <div id="user-dropdown" class="user-dropdown">
             <div style="position: relative;">
                 <img id="user-team-logo" style="width: 3rem; height: 3rem; margin-right: 10px; display: none; background-color: white; border-radius: 50%; padding: 2px; cursor: pointer;" onclick="toggleTeamSelector()">
-                <div id="team-selector" style="display:none; position: absolute; top: 110%; right: 0; background: white; padding: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.2); border-radius: 4px; z-index: 1000; width: 250px; color: black;">
-                    <input type="text" id="team-search-input" placeholder="Search Team" oninput="searchTeams()" onkeyup="searchTeams()" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 3px; box-sizing: border-box; margin-bottom: 5px;">
-                    <div id="search-results" style="max-height: 200px; overflow-y: auto;"></div>
+                <div id="team-selector-backdrop" onclick="toggleTeamSelector()"></div>
+                <div id="team-selector" style="display:none; position: absolute; top: 110%; right: 0; background: white; padding: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.25); border-radius: 8px; z-index: 3000; width: 280px; color: black;">
+                    <div class="team-selector-header">
+                        <span>Select Favorite Team</span>
+                        <span class="team-selector-close" onclick="toggleTeamSelector()">&times;</span>
+                    </div>
+                    <input type="text" id="team-search-input" placeholder="Search Team..." oninput="searchTeams()" onkeyup="searchTeams()" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; margin-bottom: 8px; font-size: 16px;">
+                    <div id="search-results" style="max-height: 250px; overflow-y: auto;"></div>
                 </div>
             </div>
             <button id="username-display" class="username-btn" onclick="toggleDropdown('user-menu')">User</button>
@@ -163,12 +168,15 @@
 
         function toggleTeamSelector() {
             const selector = document.getElementById('team-selector');
+            const backdrop = document.getElementById('team-selector-backdrop');
             if (selector.style.display === 'none') {
                 selector.style.display = 'block';
+                if (backdrop) backdrop.style.display = 'block';
                 loadAllTeams();
                 document.getElementById('team-search-input').focus();
             } else {
                 selector.style.display = 'none';
+                if (backdrop) backdrop.style.display = 'none';
             }
         }
 
@@ -236,7 +244,9 @@
             }
             if (!event.target.closest('#user-team-logo') && !event.target.closest('#team-selector')) {
                 const selector = document.getElementById('team-selector');
+                const backdrop = document.getElementById('team-selector-backdrop');
                 if (selector) selector.style.display = 'none';
+                if (backdrop) backdrop.style.display = 'none';
             }
             if (!event.target.matches('.mobile-menu-btn') && !event.target.closest('.nav-links')) {
                 const nav = document.getElementById('nav-links');
@@ -325,8 +335,8 @@
                     const opponentName = escapeHtml(opponent ? (opponent.team.shortDisplayName || opponent.team.displayName) : 'Opponent');
                     banner.innerHTML = '';
                     const bannerDiv = document.createElement('div');
-                    bannerDiv.style.cssText = 'background-color: #cc0000; color: white; text-align: center; padding: 10px; cursor: pointer; font-weight: bold;';
-                    bannerDiv.innerHTML = `${leagueName} Team vs ${opponentName} today at ${timeStr} <span style="font-size: 0.9em; text-decoration: underline; margin-left: 10px;">Make Your Pick!</span>`;
+                    bannerDiv.style.cssText = 'background: linear-gradient(135deg, #cc0000, #990000); color: white; text-align: center; padding: 12px 16px; cursor: pointer; font-weight: bold; border-bottom: 2px solid rgba(0,0,0,0.15); display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; font-size: 0.95rem;';
+                    bannerDiv.innerHTML = `<span>🏀 ${leagueName} vs ${opponentName} today at ${timeStr}</span> <span style="background: white; color: #cc0000; padding: 4px 10px; border-radius: 12px; font-size: 0.82rem; font-weight: 800; display: inline-block;">Make Pick &rarr;</span>`;
                     bannerDiv.addEventListener('click', () => {
                         goToGameBanner(target.league, String(target.game.id));
                     });
@@ -346,6 +356,53 @@
                 {% endif %}
             });
         }
+        function updateActiveNav() {
+            const currentPath = window.location.pathname.toLowerCase();
+            document.querySelectorAll('.bottom-nav-item').forEach(item => {
+                const href = (item.getAttribute('href') || '').toLowerCase();
+                const pathSlug = href.replace('/college-basketball-stats', '').replace('/', '');
+                if (pathSlug && currentPath.includes(pathSlug)) {
+                    item.classList.add('active');
+                } else if (!pathSlug && (currentPath === '/college-basketball-stats/' || currentPath === '/college-basketball-stats')) {
+                    item.classList.add('active');
+                } else if (href.endsWith('/scoreboard') && (currentPath === '/college-basketball-stats/' || currentPath === '/college-basketball-stats')) {
+                    item.classList.add('active');
+                } else {
+                    item.classList.remove('active');
+                }
+            });
+            document.querySelectorAll('.nav-links a').forEach(link => {
+                const href = (link.getAttribute('href') || '').toLowerCase();
+                const pathSlug = href.replace('/college-basketball-stats', '').replace('/', '');
+                if (pathSlug && currentPath.includes(pathSlug)) {
+                    link.style.color = '#fff';
+                    link.style.fontWeight = 'bold';
+                }
+            });
+        }
+        updateActiveNav();
     </script>
+    <nav class="mobile-bottom-nav" id="mobile-bottom-nav">
+        <a href="/College-Basketball-Stats/scoreboard" class="bottom-nav-item" id="nav-item-scoreboard">
+            <span class="nav-icon">🏀</span>
+            <span class="nav-label">Scores</span>
+        </a>
+        <a href="/College-Basketball-Stats/schedule" class="bottom-nav-item" id="nav-item-schedule">
+            <span class="nav-icon">📅</span>
+            <span class="nav-label">Schedule</span>
+        </a>
+        <a href="/College-Basketball-Stats/roster" class="bottom-nav-item" id="nav-item-roster">
+            <span class="nav-icon">👥</span>
+            <span class="nav-label">Roster</span>
+        </a>
+        <a href="/College-Basketball-Stats/standings" class="bottom-nav-item" id="nav-item-standings">
+            <span class="nav-icon">🏆</span>
+            <span class="nav-label">Standings</span>
+        </a>
+        <a href="/College-Basketball-Stats/groups" class="bottom-nav-item" id="nav-item-groups">
+            <span class="nav-icon">⭐</span>
+            <span class="nav-label">Groups</span>
+        </a>
+    </nav>
 </body>
 </html>

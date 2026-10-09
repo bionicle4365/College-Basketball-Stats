@@ -258,9 +258,9 @@ body.dark-mode .standings-table tr.highlight-team { background-color: #1b3a1e; c
 /* Member Pick Breakdown Modal */
 .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center; }
 .modal-box { background: white; padding: 20px; border-radius: 8px; max-width: 90%; width: 550px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); position: relative; max-height: 85vh; overflow-y: auto; }
-.modal-close { position: absolute; top: 10px; right: 15px; font-size: 1.5rem; cursor: pointer; color: #666; line-height: 1; }
+.modal-close { position: absolute; top: 6px; right: 6px; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 1.8rem; cursor: pointer; color: #666; line-height: 1; -webkit-tap-highlight-color: transparent; }
 .modal-close:hover { color: #cc0000; }
-.modal-body { font-size: 0.9em; line-height: 1.5; margin-top: 10px; white-space: pre-wrap; font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, Courier, monospace; }
+.modal-body { font-size: 0.9em; line-height: 1.5; margin-top: 15px; white-space: pre-wrap; font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, Courier, monospace; }
 
 .game-matrix-table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.85rem; }
 .game-matrix-table th, .game-matrix-table td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #eee; }
@@ -295,3 +295,483 @@ body.dark-mode .modal-box { background-color: #1e1e1e; color: #e0e0e0; border: 1
 body.dark-mode .modal-close { color: #aaa; }
 body.dark-mode .game-matrix-table th { background-color: #2d2d2d; color: #e0e0e0; border-color: #444; }
 body.dark-mode .game-matrix-table td { border-color: #333; }
+
+/* ==========================================================================
+   Mobile Usability Enhancements (Thumb Zone, Sticky Tables, Cards, Touch)
+   ========================================================================== */
+
+/* 1. Mobile Bottom Navigation Bar */
+.mobile-bottom-nav {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    #content {
+        padding-bottom: 75px;
+    }
+
+    .mobile-bottom-nav {
+        display: flex;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 58px;
+        background: #ffffff;
+        border-top: 1px solid #e1e4e8;
+        justify-content: space-around;
+        align-items: center;
+        z-index: 1500;
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+        box-shadow: 0 -3px 12px rgba(0, 0, 0, 0.08);
+    }
+
+    .bottom-nav-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: #71767b;
+        text-decoration: none;
+        flex: 1;
+        height: 100%;
+        font-size: 0.72rem;
+        font-weight: 600;
+        transition: color 0.15s ease-in-out;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    .bottom-nav-item .nav-icon {
+        font-size: 1.25rem;
+        line-height: 1.2;
+        margin-bottom: 2px;
+    }
+
+    .bottom-nav-item.active {
+        color: #cc0000;
+        font-weight: 700;
+    }
+
+    body.dark-mode .mobile-bottom-nav {
+        background: #1e1e1e;
+        border-top-color: #333;
+        box-shadow: 0 -3px 12px rgba(0, 0, 0, 0.35);
+    }
+
+    body.dark-mode .bottom-nav-item {
+        color: #9e9e9e;
+    }
+
+    body.dark-mode .bottom-nav-item.active {
+        color: #ff6b6b;
+    }
+
+    /* Prevent iOS Safari auto-zoom on input focus */
+    input, select, textarea {
+        font-size: 16px !important;
+    }
+}
+
+/* 2. Sticky VAL & Player Columns in Box Score */
+.stats-table-wrapper {
+    position: relative;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid #e1e4e8;
+    border-radius: 6px;
+    margin-top: 12px;
+}
+
+.stats-table th.col-val,
+.stats-table td.col-val {
+    position: sticky;
+    left: 0;
+    z-index: 4;
+    background-color: #ffffff;
+    border-right: 1px solid #e1e4e8;
+    min-width: 44px;
+    width: 44px;
+    text-align: center;
+}
+
+.stats-table th.col-player,
+.stats-table td.col-player {
+    position: sticky;
+    left: 44px;
+    z-index: 4;
+    background-color: #ffffff;
+    border-right: 2px solid #ddd;
+    min-width: 135px;
+    max-width: 165px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+    padding-left: 8px;
+}
+
+.stats-table thead th.col-val {
+    z-index: 5;
+    background-color: #f9f9f9;
+}
+
+.stats-table thead th.col-player {
+    z-index: 5;
+    background-color: #f9f9f9;
+}
+
+body.dark-mode .stats-table-wrapper {
+    border-color: #333;
+}
+
+body.dark-mode .stats-table td.col-val,
+body.dark-mode .stats-table td.col-player {
+    background-color: #1e1e1e !important;
+    border-right-color: #333;
+}
+
+body.dark-mode .stats-table thead th.col-val,
+body.dark-mode .stats-table thead th.col-player {
+    background-color: #2d2d2d !important;
+    border-right-color: #444;
+}
+
+.stats-table tr.picked-row td.col-val,
+.stats-table tr.picked-row td.col-player {
+    background-color: #e8f5e9 !important;
+}
+
+body.dark-mode .stats-table tr.picked-row td.col-val,
+body.dark-mode .stats-table tr.picked-row td.col-player {
+    background-color: #1b3a1e !important;
+}
+
+.val-info-badge {
+    font-size: 0.78rem;
+    margin-left: 5px;
+    opacity: 0.7;
+    cursor: pointer;
+    vertical-align: middle;
+}
+.val-info-badge:hover {
+    opacity: 1;
+}
+
+/* 3. Pre-Game Pick Container & Controls */
+.pick-controls-wrapper {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    max-width: 500px;
+    margin: 0 auto;
+}
+
+@media (max-width: 600px) {
+    .pick-controls-wrapper {
+        flex-direction: column;
+        width: 100%;
+        gap: 12px;
+    }
+    .pick-select {
+        width: 100%;
+        height: 48px;
+        font-size: 16px;
+        box-sizing: border-box;
+    }
+    #save-pick-btn {
+        width: 100%;
+        height: 48px;
+        font-size: 1rem;
+        border-radius: 6px;
+    }
+}
+
+/* 4. Segmented Control Team Switcher */
+@media (max-width: 600px) {
+    .btn-group {
+        display: flex;
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .btn-group button {
+        flex: 1;
+        padding: 11px 8px;
+        font-size: 0.95rem;
+    }
+}
+
+/* 5. Mobile Matchup Card Scalability */
+@media (max-width: 600px) {
+    .game-card {
+        padding: 14px 10px;
+    }
+    .score-board {
+        margin-bottom: 12px;
+    }
+    .score-board .team-logo {
+        width: 44px;
+        height: 44px;
+        margin-bottom: 6px;
+    }
+    .team-name {
+        font-size: 0.95rem;
+        line-height: 1.25;
+    }
+    .team-record {
+        font-size: 0.8rem;
+    }
+    .team-score {
+        font-size: 2.2rem;
+    }
+    .vs {
+        margin: 0 4px;
+        font-size: 0.8rem;
+    }
+}
+
+/* 6. Schedule Mobile Cards View */
+.schedule-cards-container {
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 15px;
+}
+
+.schedule-card {
+    background: white;
+    border: 1px solid #e1e4e8;
+    border-radius: 8px;
+    padding: 14px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    text-align: left;
+    transition: transform 0.15s ease, background 0.15s ease;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.schedule-card:active {
+    transform: scale(0.99);
+    background-color: #f8f9fa;
+}
+
+body.dark-mode .schedule-card {
+    background: #1e1e1e;
+    border-color: #333;
+}
+
+body.dark-mode .schedule-card:active {
+    background-color: #252525;
+}
+
+.schedule-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.85rem;
+}
+
+.schedule-card-date {
+    color: #666;
+    font-weight: 600;
+}
+
+body.dark-mode .schedule-card-date {
+    color: #aaa;
+}
+
+.schedule-card-result {
+    font-weight: bold;
+    font-size: 0.95rem;
+}
+
+.schedule-card-matchup {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 1.05rem;
+    font-weight: bold;
+}
+
+.schedule-card-matchup .team-logo {
+    width: 28px;
+    height: 28px;
+    margin-right: 2px;
+}
+
+.schedule-card-bottom {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 2px;
+    padding-top: 10px;
+    border-top: 1px solid #f0f0f0;
+}
+
+body.dark-mode .schedule-card-bottom {
+    border-top-color: #333;
+}
+
+.schedule-card-chip {
+    background: #f1f3f5;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    color: #495057;
+    flex: 1;
+    min-width: 130px;
+    display: flex;
+    flex-direction: column;
+}
+
+body.dark-mode .schedule-card-chip {
+    background: #2a2a2a;
+    color: #ccc;
+}
+
+.chip-label {
+    font-size: 0.7rem;
+    color: #777;
+    text-transform: uppercase;
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+
+body.dark-mode .chip-label {
+    color: #888;
+}
+
+.chip-val {
+    font-size: 0.88rem;
+    color: #333;
+}
+
+body.dark-mode .chip-val {
+    color: #e0e0e0;
+}
+
+.schedule-card-chip.correct-pick {
+    background-color: #d4edda;
+    border: 1px solid #c3e6cb;
+}
+
+body.dark-mode .schedule-card-chip.correct-pick {
+    background-color: #1b3a1e;
+    border-color: #2e7d32;
+}
+
+@media (max-width: 680px) {
+    .schedule-table {
+        display: none;
+    }
+    .schedule-cards-container {
+        display: flex;
+    }
+}
+
+/* 7. Roster Mobile Expand Chevron & Column Prioritization */
+.expand-chevron {
+    display: inline-block;
+    margin-left: 8px;
+    font-size: 0.85rem;
+    color: #888;
+    transition: transform 0.2s ease;
+}
+
+.player-row.expanded .expand-chevron {
+    transform: rotate(90deg);
+    color: #cc0000;
+}
+
+@media (max-width: 650px) {
+    .col-hide-mobile {
+        display: none !important;
+    }
+    .roster-table th, .roster-table td {
+        padding: 9px 6px;
+    }
+    .headshot {
+        width: 34px;
+        height: 34px;
+        margin-right: 6px;
+    }
+}
+
+/* 8. Team Selector Responsive Modal on Mobile */
+@media (max-width: 768px) {
+    #team-selector {
+        position: fixed !important;
+        top: 50% !important;
+        left: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        width: 90vw !important;
+        max-width: 360px !important;
+        max-height: 80vh !important;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45) !important;
+        border-radius: 12px !important;
+        z-index: 3000 !important;
+        padding: 16px !important;
+        box-sizing: border-box;
+    }
+    .team-selector-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+        font-weight: bold;
+        font-size: 1.05rem;
+    }
+    .team-selector-close {
+        cursor: pointer;
+        font-size: 1.6rem;
+        padding: 4px 8px;
+        line-height: 1;
+        color: #666;
+    }
+    body.dark-mode .team-selector-close {
+        color: #aaa;
+    }
+    #team-selector-backdrop {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(0, 0, 0, 0.55);
+        z-index: 2999;
+        backdrop-filter: blur(2px);
+    }
+}
+
+/* 9. Groups Page Form on Mobile */
+@media (max-width: 600px) {
+    .groups-container .input-group {
+        flex-direction: column;
+        gap: 10px;
+    }
+    .groups-container .input-group input {
+        width: 100%;
+        box-sizing: border-box;
+        height: 44px;
+    }
+    .groups-container .input-group button {
+        width: 100%;
+        height: 44px;
+    }
+    .group-stats-grid {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+    .leaderboard-table th:nth-child(4),
+    .leaderboard-table td:nth-child(4),
+    .leaderboard-table th:nth-child(5),
+    .leaderboard-table td:nth-child(5),
+    .leaderboard-table th:nth-child(6),
+    .leaderboard-table td:nth-child(6) {
+        display: none;
+    }
+}

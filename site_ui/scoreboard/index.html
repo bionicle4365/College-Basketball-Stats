@@ -426,12 +426,12 @@ permalink: /scoreboard/
         <div class="pick-container">
             <h3>Make Your Pick</h3>
             <p>Select a player for this game:</p>
-            <div style="display: flex; justify-content: center; gap: 10px; align-items: center;">
+            <div class="pick-controls-wrapper">
                 <select id="player-pick-select" class="pick-select">
                     <option value="">-- Select Player --</option>
                     ${options}
                 </select>
-                <button id="save-pick-btn" data-game-id="${escapeHtml(gameId)}" data-game-date="${safeGameDate}" style="padding: 8px 16px; background: #cc0000; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Save</button>
+                <button id="save-pick-btn" data-game-id="${escapeHtml(gameId)}" data-game-date="${safeGameDate}" style="padding: 10px 20px; background: #cc0000; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Save</button>
             </div>
             <div id="pick-message" style="margin-top: 10px; height: 20px; font-weight: bold;"></div>
         </div>
@@ -549,8 +549,8 @@ permalink: /scoreboard/
         const isPicked = player.athlete && String(player.athlete.id) === String(pickedPlayerId);
         const rowClass = isPicked ? 'picked-row' : '';
         return `<tr class="${rowClass}">
-          <td style="font-weight:bold;">${score}</td>
-          <td style="text-align:left; white-space:nowrap; cursor:pointer;" onclick="showValBreakdown(this)" data-breakdown="${tooltip}">${activeIndicator}${name}</td>
+          <td class="col-val" style="font-weight:bold;">${score}</td>
+          <td class="col-player" style="text-align:left; white-space:nowrap; cursor:pointer;" onclick="showValBreakdown(this)" data-breakdown="${tooltip}">${activeIndicator}${name} <span class="val-info-badge" title="VAL breakdown">ℹ️</span></td>
           ${cells}
         </tr>`;
       }).join('');
@@ -558,9 +558,9 @@ permalink: /scoreboard/
       const displayStyle = index === 0 ? 'block' : 'none';
       return `
         <div id="team-stats-${index}" style="display: ${displayStyle};">
-          <div style="overflow-x: auto;">
+          <div class="stats-table-wrapper">
             <table class="stats-table">
-              <thead><tr><th>VAL</th><th style="text-align:left;">Player</th>${targetStats.map(s => `<th>${s}</th>`).join('')}</tr></thead>
+              <thead><tr><th class="col-val">VAL</th><th class="col-player" style="text-align:left;">Player</th>${targetStats.map(s => `<th>${s}</th>`).join('')}</tr></thead>
               <tbody>${rows}</tbody>
             </table>
           </div>

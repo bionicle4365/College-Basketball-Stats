@@ -55,7 +55,10 @@ permalink: /roster/
 
         function renderTable(headers, data, type) {
             let html = `<table class="roster-table"><thead><tr><th>Player</th>`;
-            headers.forEach(h => html += `<th>${escapeHtml(h)}</th>`);
+            headers.forEach(h => {
+                const hideClass = (h === 'Weight' || h === 'Birthplace') ? ' class="col-hide-mobile"' : '';
+                html += `<th${hideClass}>${escapeHtml(h)}</th>`;
+            });
             html += `</tr></thead><tbody>`;
 
             data.forEach(item => {
@@ -76,8 +79,11 @@ permalink: /roster/
                 const safeJersey = player.jersey ? escapeHtml(player.jersey) : '';
                 
                 html += `<tr class="player-row" data-player-id="${playerId}" style="cursor: pointer;">
-                    <td><img src="${img}" class="headshot"><strong>${safeName}</strong> <span style="color:#888; font-size:0.8em">#${safeJersey}</span></td>
-                    ${stats.map(s => `<td>${escapeHtml(s)}</td>`).join('')}
+                    <td><img src="${img}" class="headshot"><strong>${safeName}</strong> <span style="color:#888; font-size:0.8em">#${safeJersey}</span><span class="expand-chevron">▸</span></td>
+                    ${stats.map((s, idx) => {
+                        const hideClass = (headers[idx] === 'Weight' || headers[idx] === 'Birthplace') ? ' class="col-hide-mobile"' : '';
+                        return `<td${hideClass}>${escapeHtml(s)}</td>`;
+                    }).join('')}
                 </tr>
                 <tr id="stats-${playerId}" class="stats-row" style="display: none;">
                     <td colspan="${headers.length + 1}" style="padding: 15px;">
@@ -103,9 +109,11 @@ permalink: /roster/
             const id = String(rawId).replace(/[^a-zA-Z0-9_-]/g, '');
             const row = document.getElementById('stats-' + id);
             const content = document.getElementById('stats-content-' + id);
+            const playerRow = document.querySelector(`.player-row[data-player-id="${id}"]`);
             
             if (row.style.display === 'none') {
                 row.style.display = 'table-row';
+                if (playerRow) playerRow.classList.add('expanded');
                 if (!content.hasAttribute('data-loaded')) {
                     const gamelogUrl = `https://site.web.api.espn.com/apis/common/v3/sports/basketball/${encodeURIComponent(SPORT_PATH)}/athletes/${encodeURIComponent(id)}/gamelog`;
 
@@ -201,6 +209,7 @@ permalink: /roster/
                 }
             } else {
                 row.style.display = 'none';
+                if (playerRow) playerRow.classList.remove('expanded');
             }
         }
 
