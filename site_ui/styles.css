@@ -851,3 +851,230 @@ body.dark-mode .schedule-card-chip.correct-pick {
         display: none;
     }
 }
+
+/* ==========================================================================
+   10. Pick Needed Alert Banner & Live Countdown Styles
+   ========================================================================== */
+#game-banner {
+    display: none;
+    position: relative;
+    z-index: 99;
+}
+.pick-alert-banner {
+    background: linear-gradient(90deg, #990000 0%, #cc0000 50%, #880000 100%);
+    color: white;
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+    font-size: 0.92rem;
+}
+.banner-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+}
+.banner-league-badge {
+    background: rgba(0, 0, 0, 0.35);
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 800;
+    padding: 2px 8px;
+    border-radius: 12px;
+    letter-spacing: 0.5px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+.banner-matchup {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.banner-date-time {
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 0.85rem;
+    font-weight: normal;
+}
+.banner-center {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(0, 0, 0, 0.28);
+    padding: 4px 12px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+}
+.banner-timer-icon {
+    font-size: 0.95rem;
+}
+.banner-timer-label {
+    font-size: 0.82rem;
+    color: rgba(255, 255, 255, 0.9);
+}
+.banner-timer-digits {
+    font-family: 'Courier New', Courier, monospace, sans-serif;
+    font-weight: 800;
+    font-size: 0.95rem;
+    letter-spacing: 0.5px;
+}
+.banner-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.banner-action-btn {
+    background: white;
+    color: #cc0000;
+    border: none;
+    border-radius: 16px;
+    padding: 6px 14px;
+    font-weight: 800;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: transform 0.15s ease, background 0.15s ease;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+}
+.banner-action-btn:hover {
+    background: #f0f0f0;
+    transform: scale(1.03);
+}
+.banner-close-btn {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 1.3rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0 4px;
+    transition: color 0.15s ease;
+}
+.banner-close-btn:hover {
+    color: white;
+}
+
+@media (max-width: 650px) {
+    .pick-alert-banner {
+        padding: 8px 12px;
+        gap: 8px;
+        font-size: 0.85rem;
+        justify-content: center;
+    }
+    .banner-left, .banner-center, .banner-right {
+        justify-content: center;
+    }
+    .banner-date-time {
+        display: none;
+    }
+}
+
+/* Scoreboard Pregame Countdown & Lock Styles */
+.pregame-status-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+.pregame-countdown-badge {
+    background: rgba(204, 0, 0, 0.12);
+    color: #cc0000;
+    border: 1px solid rgba(204, 0, 0, 0.3);
+    padding: 3px 10px;
+    border-radius: 14px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+body.dark-mode .pregame-countdown-badge {
+    background: rgba(204, 0, 0, 0.25);
+    color: #ff5252;
+    border-color: rgba(204, 0, 0, 0.5);
+}
+
+.pick-countdown-card {
+    background: #fdf2f2;
+    border: 1px solid #f5c2c2;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+body.dark-mode .pick-countdown-card {
+    background: #1a1414;
+    border-color: #3d1c1c;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+.countdown-badge-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #cc0000;
+}
+body.dark-mode .countdown-badge-row {
+    color: #ff5252;
+}
+.countdown-timer-digits {
+    font-family: 'Courier New', Courier, monospace, sans-serif;
+    font-size: 1.8rem;
+    font-weight: 800;
+    margin: 6px 0 4px 0;
+    letter-spacing: 1px;
+    color: #222;
+}
+body.dark-mode .countdown-timer-digits {
+    color: #f0f0f0;
+}
+.countdown-timer-digits.locked {
+    color: #888;
+    font-size: 1.2rem;
+}
+.countdown-subtext {
+    font-size: 0.82rem;
+    color: #666;
+}
+body.dark-mode .countdown-subtext {
+    color: #aaa;
+}
+
+/* Schedule Badges */
+.badge-pick-needed {
+    background: #cc0000;
+    color: white;
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 10px;
+    display: inline-block;
+    letter-spacing: 0.3px;
+    box-shadow: 0 1px 3px rgba(204, 0, 0, 0.3);
+    animation: pick-needed-pulse 2s infinite ease-in-out;
+}
+@keyframes pick-needed-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.82; transform: scale(0.98); }
+}
+.badge-pick-saved {
+    background: #2e7d32;
+    color: white;
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 3px 8px;
+    border-radius: 10px;
+    display: inline-block;
+    letter-spacing: 0.3px;
+    box-shadow: 0 1px 3px rgba(46, 125, 50, 0.3);
+}

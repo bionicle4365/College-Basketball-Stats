@@ -295,6 +295,18 @@
             }
         }
 
+        let bannerCountdownInterval = null;
+
+        function dismissGameBanner(gameId) {
+            sessionStorage.setItem('dismissed_banner_' + gameId, 'true');
+            const banner = document.getElementById('game-banner');
+            if (banner) banner.style.display = 'none';
+            if (bannerCountdownInterval) {
+                clearInterval(bannerCountdownInterval);
+                bannerCountdownInterval = null;
+            }
+        }
+
         function goToGameBanner(league, gameId) {
             localStorage.setItem('league', league);
             window.location.href = `/College-Basketball-Stats/scoreboard#${gameId}`;
@@ -305,21 +317,30 @@
             if (localStorage.getItem('isLoggedIn') !== 'true') return;
 
             async function checkUpcomingGames() {
-                const today = new Date();
-                const leagues = ['mens', 'womens'];
+                const now = new Date();
+                const currentLg = localStorage.getItem('league') || 'mens';
+                const leagues = currentLg === 'womens' ? ['womens', 'mens'] : ['mens', 'womens'];
                 let upcomingGames = [];
 
                 for (const league of leagues) {
                     const sportPath = league === 'womens' ? 'womens-college-basketball' : 'mens-college-basketball';
                     try {
                         const data = await fetchTeamSchedule(sportPath, FAV_TEAM_ID);
-                        if (data.events) {
-                            const nextGame = data.events.find(e => {
+                        if (data && data.events) {
+                            const futureGames = data.events.filter(e => {
                                 const gameDate = new Date(e.date);
-                                return gameDate.toDateString() === today.toDateString() && gameDate > today;
-                            });
-                            
-                            if (nextGame) {
+                                const state = e.competitions?.[0]?.status?.type?.state;
+                                return state !== 'post' && gameDate > now;
+                            }).sort((a, b) => new Date(a.date) - new Date(b.date));
+
+                            if (futureGames.length > 0) {
+                                const nextGame = futureGames[0];
+                                const gameDate = new Date(nextGame.date);
+
+                                if (sessionStorage.getItem('dismissed_banner_' + nextGame.id) === 'true') {
+                                    continue;
+                                }
+
                                 let hasPick = false;
                                 if (typeof db !== 'undefined' && typeof auth !== 'undefined') {
                                     const user = await new Promise(resolve => {
@@ -335,37 +356,89 @@
                                     if (user) {
                                         const collectionName = `${FAV_TEAM_ID}${league === 'mens' ? 'm' : 'w'}`;
                                         const doc = await db.collection(collectionName).doc(String(nextGame.id)).get().catch(() => null);
-                                        if (doc && doc.exists && doc.data()[user.uid]) {
+                                        if (doc && doc.exists && doc.data() && doc.data()[user.uid]) {
                                             hasPick = true;
                                         }
                                     }
                                 }
-                                
+
                                 if (!hasPick) {
-                                    upcomingGames.push({ game: nextGame, league: league, date: new Date(nextGame.date) });
+                                    upcomingGames.push({ game: nextGame, league: league, date: gameDate });
                                 }
                             }
                         }
-                    } catch (e) { console.error(e); }
+                    } catch (e) {
+                        console.error('Error checking upcoming games for banner:', e);
+                    }
                 }
 
                 if (upcomingGames.length > 0) {
                     upcomingGames.sort((a, b) => a.date - b.date);
                     const target = upcomingGames[0];
                     const banner = document.getElementById('game-banner');
-                    const timeStr = target.date.toLocaleTimeString([], {hour: 'numeric', minute:'2-digit'});
-                    const leagueName = target.league === 'womens' ? "Women's" : "Men's";
+                    if (!banner) return;
+
+                    const dateStr = target.date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+                    const timeStr = target.date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                    const leagueLabel = target.league === 'womens' ? "WBB" : "MBB";
                     const opponent = target.game.competitions[0].competitors.find(c => String(c.team.id) !== String(FAV_TEAM_ID));
                     const opponentName = escapeHtml(opponent ? (opponent.team.shortDisplayName || opponent.team.displayName) : 'Opponent');
-                    banner.innerHTML = '';
-                    const bannerDiv = document.createElement('div');
-                    bannerDiv.style.cssText = 'background: linear-gradient(135deg, #cc0000, #990000); color: white; text-align: center; padding: 12px 16px; cursor: pointer; font-weight: bold; border-bottom: 2px solid rgba(0,0,0,0.15); display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px; font-size: 0.95rem;';
-                    bannerDiv.innerHTML = `<span>🏀 ${leagueName} vs ${opponentName} today at ${timeStr}</span> <span style="background: white; color: #cc0000; padding: 4px 10px; border-radius: 12px; font-size: 0.82rem; font-weight: 800; display: inline-block;">Make Pick &rarr;</span>`;
-                    bannerDiv.addEventListener('click', () => {
-                        goToGameBanner(target.league, String(target.game.id));
-                    });
-                    banner.appendChild(bannerDiv);
+                    const oppLogo = opponent ? getTeamLogoHtml(opponent.team) : '';
+
+                    banner.innerHTML = `
+                        <div class="pick-alert-banner">
+                            <div class="banner-left">
+                                <span class="banner-league-badge">${leagueLabel}</span>
+                                <span class="banner-matchup">${oppLogo} vs ${opponentName}</span>
+                                <span class="banner-date-time">&bull; ${dateStr} at ${timeStr}</span>
+                            </div>
+                            <div class="banner-center">
+                                <span class="banner-timer-icon">⏳</span>
+                                <span class="banner-timer-label">Tip-off in:</span>
+                                <span class="banner-timer-digits" id="banner-countdown-digits">--:--:--</span>
+                            </div>
+                            <div class="banner-right">
+                                <button class="banner-action-btn" onclick="goToGameBanner('${target.league}', '${target.game.id}')">Make Pick &rarr;</button>
+                                <button class="banner-close-btn" onclick="dismissGameBanner('${target.game.id}')" title="Dismiss" aria-label="Dismiss">&times;</button>
+                            </div>
+                        </div>
+                    `;
                     banner.style.display = 'block';
+
+                    function updateBannerTimer() {
+                        const digitsEl = document.getElementById('banner-countdown-digits');
+                        if (!digitsEl) {
+                            if (bannerCountdownInterval) {
+                                clearInterval(bannerCountdownInterval);
+                                bannerCountdownInterval = null;
+                            }
+                            return;
+                        }
+                        const diff = target.date.getTime() - Date.now();
+                        if (diff <= 0) {
+                            digitsEl.textContent = '🔒 Starting now!';
+                            if (bannerCountdownInterval) {
+                                clearInterval(bannerCountdownInterval);
+                                bannerCountdownInterval = null;
+                            }
+                            return;
+                        }
+
+                        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+                        const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+                        const minutes = Math.floor((diff / (1000 * 60)) % 60);
+                        const seconds = Math.floor((diff / 1000) % 60);
+
+                        if (days > 0) {
+                            digitsEl.textContent = `${days}d ${hours}h ${minutes}m ${seconds}s`;
+                        } else {
+                            digitsEl.textContent = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+                        }
+                    }
+
+                    updateBannerTimer();
+                    if (bannerCountdownInterval) clearInterval(bannerCountdownInterval);
+                    bannerCountdownInterval = setInterval(updateBannerTimer, 1000);
                 }
             }
             checkUpcomingGames();

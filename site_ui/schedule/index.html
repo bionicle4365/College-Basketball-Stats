@@ -210,21 +210,44 @@ permalink: /schedule/
                             }
 
                             // Handle Pick Name (if not already handled by VAL update or if game not complete)
+                            const isPreGame = game.status.type.state === 'pre' || !game.status.type.completed;
                             if (pickDoc && pickDoc.exists) {
                                 const pickedPlayerId = pickDoc.data()[USER_UID];
                                 if (pickedPlayerId) {
                                     const pickCell = document.getElementById(`pick-${game.id}`);
                                     const pickCardCell = document.getElementById(`pick-card-${game.id}`);
-                                    if (pickCell && pickCell.textContent === '-') {
+                                    if (pickCell && (pickCell.textContent === '-' || pickCell.textContent === '')) {
                                         const playerName = playerMap[pickedPlayerId] || 'Unknown';
                                         const valDisplay = (game.status.type.state === 'post') ? ' (0)' : '';
-                                        const pickNameStr = `<strong>${escapeHtml(playerName)}</strong>${valDisplay}`;
+                                        const pickNameStr = isPreGame 
+                                            ? `<span class="badge-pick-saved">✓ ${escapeHtml(playerName)}</span>`
+                                            : `<strong>${escapeHtml(playerName)}</strong>${valDisplay}`;
                                         pickCell.innerHTML = pickNameStr;
                                         pickCell.style.color = '';
                                         if (pickCardCell) {
                                             pickCardCell.innerHTML = pickNameStr;
                                         }
                                     }
+                                } else if (isPreGame) {
+                                    const pickCell = document.getElementById(`pick-${game.id}`);
+                                    const pickCardCell = document.getElementById(`pick-card-${game.id}`);
+                                    const neededHtml = `<span class="badge-pick-needed">Pick Needed &rarr;</span>`;
+                                    if (pickCell && (pickCell.textContent === '-' || pickCell.textContent === '')) {
+                                        pickCell.innerHTML = neededHtml;
+                                    }
+                                    if (pickCardCell && (pickCardCell.textContent === '-' || pickCardCell.textContent === '')) {
+                                        pickCardCell.innerHTML = neededHtml;
+                                    }
+                                }
+                            } else if (isPreGame) {
+                                const pickCell = document.getElementById(`pick-${game.id}`);
+                                const pickCardCell = document.getElementById(`pick-card-${game.id}`);
+                                const neededHtml = `<span class="badge-pick-needed">Pick Needed &rarr;</span>`;
+                                if (pickCell && (pickCell.textContent === '-' || pickCell.textContent === '')) {
+                                    pickCell.innerHTML = neededHtml;
+                                }
+                                if (pickCardCell && (pickCardCell.textContent === '-' || pickCardCell.textContent === '')) {
+                                    pickCardCell.innerHTML = neededHtml;
                                 }
                             }
                     });

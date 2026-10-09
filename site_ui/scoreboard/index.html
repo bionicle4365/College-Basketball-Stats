@@ -85,8 +85,11 @@ permalink: /scoreboard/
           [`${USER_UID}_time`]: Date.now()
       }, { merge: true })
       .then(() => {
-          message.textContent = "Pick saved!";
-          message.style.color = "green";
+          message.textContent = "✓ Pick saved! You can change this anytime before tip-off.";
+          message.style.color = "#2e7d32";
+          const banner = document.getElementById('game-banner');
+          if (banner) banner.style.display = 'none';
+          sessionStorage.setItem('dismissed_banner_' + gameId, 'true');
       })
       .catch((error) => {
           console.error("Error saving pick: ", error);
@@ -97,12 +100,85 @@ permalink: /scoreboard/
 
   let livePollInterval = null;
   let activeTeamTab = 0;
+  let pickCountdownInterval = null;
+
+  function stopPickCountdown() {
+      if (pickCountdownInterval) {
+          clearInterval(pickCountdownInterval);
+          pickCountdownInterval = null;
+      }
+  }
+
+  function startPickCountdown(gameDateStr, gameId) {
+      stopPickCountdown();
+      if (!gameDateStr) return;
+      const targetTime = new Date(gameDateStr).getTime();
+      if (isNaN(targetTime)) return;
+
+      function update() {
+          const now = Date.now();
+          const diff = targetTime - now;
+          const countdownEl = document.getElementById('pick-countdown-timer');
+          const headerCountdownEl = document.getElementById('header-countdown-badge');
+          const saveBtn = document.getElementById('save-pick-btn');
+          const selectEl = document.getElementById('player-pick-select');
+          const messageEl = document.getElementById('pick-message');
+
+          if (diff <= 0) {
+              if (countdownEl) {
+                  countdownEl.textContent = '🔒 Picks Locked (Game Started)';
+                  countdownEl.classList.add('locked');
+              }
+              if (headerCountdownEl) {
+                  headerCountdownEl.textContent = '🔒 Game Started';
+              }
+              if (saveBtn) {
+                  saveBtn.disabled = true;
+                  saveBtn.style.opacity = '0.5';
+                  saveBtn.style.cursor = 'not-allowed';
+                  saveBtn.textContent = 'Locked';
+              }
+              if (selectEl) {
+                  selectEl.disabled = true;
+              }
+              if (messageEl && (!messageEl.textContent || messageEl.textContent.includes('saved'))) {
+                  messageEl.textContent = 'Picks are now locked for this game.';
+                  messageEl.style.color = '#888';
+              }
+              stopPickCountdown();
+              return;
+          }
+
+          const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+          const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+          const minutes = Math.floor((diff / (1000 * 60)) % 60);
+          const seconds = Math.floor((diff / 1000) % 60);
+
+          let timeStr = '';
+          if (days > 0) {
+              timeStr = `${days}d ${hours}h ${minutes}m ${seconds}s`;
+          } else {
+              timeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+          }
+
+          if (countdownEl) {
+              countdownEl.textContent = timeStr;
+          }
+          if (headerCountdownEl) {
+              headerCountdownEl.textContent = `⏳ ${timeStr}`;
+          }
+      }
+
+      update();
+      pickCountdownInterval = setInterval(update, 1000);
+  }
 
   function stopLivePolling() {
       if (livePollInterval) {
           clearInterval(livePollInterval);
           livePollInterval = null;
       }
+      stopPickCountdown();
   }
 
   function startLivePolling(type) {
@@ -356,6 +432,13 @@ permalink: /scoreboard/
           <button class="live-refresh-btn" title="Refresh Live Data">&#x21bb; Live</button>
         </div>
       `;
+    } else if (state === 'pre') {
+      statusBadgeHtml = `
+        <div class="pregame-status-container">
+          <span class="status-date-text">${status}</span>
+          <span class="pregame-countdown-badge" id="header-countdown-badge">⏳ Calculating...</span>
+        </div>
+      `;
     }
 
     // Linescores
@@ -377,6 +460,7 @@ permalink: /scoreboard/
     }
 
     const display = document.getElementById('game-display');
+    const gameDate = event.date || competition?.date;
     
     display.innerHTML = `
       ${statusBadgeHtml}
@@ -399,9 +483,15 @@ permalink: /scoreboard/
       ${lastPlayHtml}
       ${nextGameHtml}
       <div id="stats-content">
-        ${(summaryData && summaryData.boxscore && renderPlayerStats(summaryData, pickedPlayerId)) || renderTeamStats(selectedTeam, opponent, rosterData, pickedPlayerId, event.id, state, event.date)}
+        ${(summaryData && summaryData.boxscore && renderPlayerStats(summaryData, pickedPlayerId)) || renderTeamStats(selectedTeam, opponent, rosterData, pickedPlayerId, event.id, state, gameDate)}
       </div>
     `;
+
+    if (state === 'pre' && gameDate) {
+        startPickCountdown(gameDate, event.id);
+    } else {
+        stopPickCountdown();
+    }
 
     // Restore active tab if player stats were rendered
     if (summaryData && summaryData.boxscore && summaryData.boxscore.players) {
@@ -422,18 +512,34 @@ permalink: /scoreboard/
       }).join('');
       
       const safeGameDate = gameDate ? escapeHtml(gameDate) : '';
+      const tipoffTimeStr = gameDate ? new Date(gameDate).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
+      const tipoffDateStr = gameDate ? new Date(gameDate).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+
       return `
         <div class="pick-container">
-            <h3>Make Your Pick</h3>
-            <p>Select a player for this game:</p>
-            <div class="pick-controls-wrapper">
-                <select id="player-pick-select" class="pick-select">
-                    <option value="">-- Select Player --</option>
-                    ${options}
-                </select>
-                <button id="save-pick-btn" data-game-id="${escapeHtml(gameId)}" data-game-date="${safeGameDate}" style="padding: 10px 20px; background: #cc0000; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">Save</button>
+            <div class="pick-countdown-card">
+                <div class="countdown-badge-row">
+                    <span class="countdown-badge-icon">⏳</span>
+                    <span class="countdown-badge-label">Picks Lock In</span>
+                </div>
+                <div id="pick-countdown-timer" class="countdown-timer-digits">--:--:--</div>
+                <div class="countdown-subtext">${tipoffDateStr ? `Tip-off: ${tipoffDateStr} at ${tipoffTimeStr}` : 'Locks promptly at scheduled tip-off.'}</div>
             </div>
-            <div id="pick-message" style="margin-top: 10px; height: 20px; font-weight: bold;"></div>
+
+            <div class="pick-box">
+                <h3 style="margin: 0 0 8px 0;">Make Your Pick</h3>
+                <p style="margin: 0 0 12px 0; color: #666; font-size: 0.9rem;">Select the player you predict will achieve the highest VAL score in this game:</p>
+                <div class="pick-controls-wrapper">
+                    <select id="player-pick-select" class="pick-select">
+                        <option value="">-- Select Player --</option>
+                        ${options}
+                    </select>
+                    <button id="save-pick-btn" data-game-id="${escapeHtml(gameId)}" data-game-date="${safeGameDate}" class="btn btn-primary" style="padding: 10px 20px;">Save Pick</button>
+                </div>
+                <div id="pick-message" style="margin-top: 10px; min-height: 20px; font-weight: bold; font-size: 0.9rem;">
+                    ${pickedPlayerId ? `<span style="color: #2e7d32;">✓ Your pick is saved. You can change it anytime before tip-off.</span>` : ''}
+                </div>
+            </div>
         </div>
       `;
   }
