@@ -28,12 +28,11 @@ permalink: /schedule/
                 if (data.team && data.team.athletes) {
                     data.team.athletes.forEach(p => playerMap[p.id] = p.shortName || p.displayName);
                 }
-                return fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${SPORT_PATH}/teams/${TEAM_ID}/schedule`);
+                return fetchTeamSchedule(SPORT_PATH, TEAM_ID);
             })
-            .then(r => r.json())
             .then(data => {
                 const events = data.events || [];
-                const teamDisplayName = escapeHtml(data.team.displayName);
+                const teamDisplayName = escapeHtml(data.team?.displayName || 'Team');
                 document.getElementById('team-name').textContent = `${teamDisplayName} Schedule`;
                 
                 if (events.length === 0) {

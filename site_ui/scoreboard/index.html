@@ -183,10 +183,8 @@ permalink: /scoreboard/
 
         // Fallback: Find previous or upcoming game from schedule
         const sportPath = getSportPath(type);
-        const scheduleUrl = `https://site.api.espn.com/apis/site/v2/sports/basketball/${sportPath}/teams/${TEAM_ID}/schedule`;
         
-        return fetch(scheduleUrl)
-          .then(r => r.json())
+        return fetchTeamSchedule(sportPath, TEAM_ID)
           .then(scheduleData => {
             const events = scheduleData.events || [];
             const today = new Date();
@@ -207,6 +205,11 @@ permalink: /scoreboard/
             if (!targetGame) {
                 const completed = events.filter(e => e.competitions[0].status.type.state === 'post');
                 targetGame = completed[completed.length - 1];
+            }
+
+            // 4. Next upcoming game
+            if (!targetGame) {
+                targetGame = events.find(e => e.competitions[0].status.type.state === 'pre');
             }
             
             if (!targetGame) {

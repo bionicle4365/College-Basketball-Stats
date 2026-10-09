@@ -164,3 +164,55 @@ async function fetchAllTeams(league) {
     }
     return [];
 }
+
+async function fetchTeamSchedule(sportPath, teamId) {
+    const sPath = sportPath || getSportPath();
+    const tId = teamId || getFavoriteTeamId();
+    const baseUrl = `https://site.api.espn.com/apis/site/v2/sports/basketball/${sPath}/teams/${tId}/schedule`;
+
+    try {
+        let data = null;
+        try {
+            const response = await fetch(baseUrl);
+            if (response.ok) {
+                data = await response.json();
+            }
+        } catch (fetchErr) {
+            console.warn('Initial schedule fetch failed:', fetchErr);
+        }
+
+        let events = data?.events || [];
+        // In NCAA college basketball, ESPN often defaults the season phase to Preseason (seasontype=1)
+        // in October, which contains 0 events. The regular season schedule is under seasontype=2.
+        const isPreseasonOnly = (data?.season && data.season.type === 1) && (!data.requestedSeason || data.requestedSeason.type === 1);
+        if (events.length === 0 || isPreseasonOnly) {
+            try {
+                const regResponse = await fetch(`${baseUrl}?seasontype=2`);
+                if (regResponse.ok) {
+                    const regData = await regResponse.json();
+                    const regEvents = regData.events || [];
+                    if (events.length === 0) {
+                        return regData;
+                    } else if (regEvents.length > 0) {
+                        const eventIds = new Set(events.map(e => String(e.id)));
+                        regEvents.forEach(e => {
+                            if (!eventIds.has(String(e.id))) {
+                                events.push(e);
+                                eventIds.add(String(e.id));
+                            }
+                        });
+                        events.sort((a, b) => new Date(a.date) - new Date(b.date));
+                        data.events = events;
+                        return data;
+                    }
+                }
+            } catch (regErr) {
+                console.warn('Error fetching regular season schedule fallback:', regErr);
+            }
+        }
+        return data || { events: [] };
+    } catch (e) {
+        console.error('Error fetching team schedule:', e);
+    }
+    return { events: [] };
+}

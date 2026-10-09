@@ -20,8 +20,7 @@ permalink: /roster/
         const chartInstances = {};
 
         let teamSchedule = [];
-        fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${SPORT_PATH}/teams/${TEAM_ID}/schedule`)
-            .then(r => r.json())
+        fetchTeamSchedule(SPORT_PATH, TEAM_ID)
             .then(data => {
                  if (data.events) {
                     teamSchedule = data.events

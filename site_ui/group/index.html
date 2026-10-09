@@ -375,8 +375,7 @@ permalink: /groups/
                 const userProfiles = await fetchUserProfiles(members);
 
                 // 2. Fetch completed schedule
-                const scheduleResp = await fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${sportPath}/teams/${teamId}/schedule`);
-                const scheduleData = await scheduleResp.json();
+                const scheduleData = await fetchTeamSchedule(sportPath, teamId);
                 const completedEvents = (scheduleData.events || []).filter(e => e.competitions[0].status.type.state === 'post');
 
                 // Initialize member stats store
