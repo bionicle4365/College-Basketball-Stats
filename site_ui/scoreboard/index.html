@@ -214,7 +214,7 @@ permalink: /scoreboard/
             
             if (state === 'pre') {
                  const sportPath = getSportPath(type);
-                 promises.push(fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${sportPath}/teams/${TEAM_ID}?enable=roster`).then(r => r.json()));
+                 promises.push(fetchTeamRoster(sportPath, TEAM_ID));
             } else {
                  promises.push(Promise.resolve(null));
             }
@@ -261,7 +261,7 @@ permalink: /scoreboard/
              const sportPath = getSportPath(type);
              return Promise.all([
                  fetchPick(game.id, type),
-                 fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${sportPath}/teams/${TEAM_ID}?enable=roster`).then(r => r.json())
+                 fetchTeamRoster(sportPath, TEAM_ID)
              ]).then(([pickedPlayerId, rosterData]) => {
                  renderGame(game, null, null, pickedPlayerId, rosterData, type);
              });
@@ -318,7 +318,7 @@ permalink: /scoreboard/
                  const sportPath = getSportPath(type);
                  return Promise.all([
                      fetchPick(targetGame.id, type),
-                     fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${sportPath}/teams/${TEAM_ID}?enable=roster`).then(r => r.json())
+                     fetchTeamRoster(sportPath, TEAM_ID)
                  ]).then(([pickedPlayerId, rosterData]) => {
                      renderGame(targetGame, null, nextGame, pickedPlayerId, rosterData, type);
                  });
@@ -503,7 +503,8 @@ permalink: /scoreboard/
   }
 
   function renderPlayerPicker(rosterData, pickedPlayerId, gameId, gameDate) {
-      const athletes = rosterData.team.athletes.filter(p => p.active !== false);
+      const athletesList = rosterData?.athletes || rosterData?.team?.athletes || [];
+      const athletes = athletesList.filter(p => p.active !== false);
       athletes.sort((a, b) => a.displayName.localeCompare(b.displayName));
       
       const options = athletes.map(p => {

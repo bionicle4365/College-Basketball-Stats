@@ -21,18 +21,17 @@ permalink: /schedule/
             if (user) {
                 USER_UID = user.uid;
             }
-            // Fetch roster first to get player names
-            fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${SPORT_PATH}/teams/${TEAM_ID}?enable=roster`)
-                .then(r => r.json())
-                .then(data => {
-                if (data.team && data.team.athletes) {
-                    data.team.athletes.forEach(p => playerMap[p.id] = p.shortName || p.displayName);
-                }
-                return fetchTeamSchedule(SPORT_PATH, TEAM_ID);
-            })
-            .then(data => {
-                const events = data.events || [];
-                const teamDisplayName = escapeHtml(data.team?.displayName || 'Team');
+            // Fetch roster and schedule in parallel
+            Promise.all([
+                fetchTeamRoster(SPORT_PATH, TEAM_ID).catch(() => null),
+                fetchTeamSchedule(SPORT_PATH, TEAM_ID)
+            ])
+            .then(([rosterData, data]) => {
+                const athletes = rosterData?.athletes || rosterData?.team?.athletes || [];
+                athletes.forEach(p => playerMap[p.id] = p.shortName || p.displayName);
+
+                const events = data?.events || [];
+                const teamDisplayName = escapeHtml(data?.team?.displayName || rosterData?.team?.displayName || 'Team');
                 document.getElementById('team-name').textContent = `${teamDisplayName} Schedule`;
                 
                 if (events.length === 0) {
@@ -255,7 +254,7 @@ permalink: /schedule/
             })
             .catch(err => {
                 console.error(err);
-                document.getElementById('schedule-content').innerHTML = 'Error loading schedule.';
+                document.getElementById('schedule-content').innerHTML = '<div class="error">Failed to load data. Please try again later.</div>';
             });
         });
     </script>

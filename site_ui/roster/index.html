@@ -37,19 +37,17 @@ permalink: /roster/
                 }
             });
 
-        // Try to fetch roster
-        const ROSTER_URL = `https://site.api.espn.com/apis/site/v2/sports/basketball/${encodeURIComponent(SPORT_PATH)}/teams/${encodeURIComponent(TEAM_ID)}?enable=roster,stats`;
-
-        
-        fetch(ROSTER_URL)
-            .then(r => r.json())
+        // Fetch roster
+        fetchTeamRoster(SPORT_PATH, TEAM_ID)
             .then(data => {
-                const teamName = escapeHtml(data.team.displayName);
+                if (!data) throw new Error('Failed to load roster data.');
+                const teamName = escapeHtml(data.team?.displayName || 'Team');
                 document.getElementById('team-name').textContent = teamName + ' Roster';
-                const athletes = data.team.athletes;
+                const athletes = data.athletes || data.team?.athletes || [];
                 renderTable(['Pos', 'Height', 'Weight', 'Class', 'Birthplace'], athletes, 'roster');
             })
             .catch(e => {
+                console.error(e);
                 document.getElementById('player-content').innerHTML = '<p class="error">Error loading data.</p>';
             });
 
@@ -70,10 +68,11 @@ permalink: /roster/
                     player.displayHeight || '-',
                     player.displayWeight || '-',
                     player.experience?.abbreviation || '-',
-                    player.birthPlace?.city ? `${player.birthPlace.city}, ${player.birthPlace.stateAbbrev || player.birthPlace.country}` : '-'
+                    player.birthPlace?.city ? `${player.birthPlace.city}, ${player.birthPlace.state || player.birthPlace.stateAbbrev || player.birthPlace.country}` : '-'
                 ];
 
-                const img = player.headshot ? sanitizeUrl(player.headshot.href) : 'https://a.espncdn.com/i/headshots/nophoto.png';
+                const headshotUrl = player.headshot?.href || (typeof player.headshot === 'string' ? player.headshot : null);
+                const img = headshotUrl ? sanitizeUrl(headshotUrl) : 'https://a.espncdn.com/i/headshots/nophoto.png';
                 const playerId = escapeHtml(player.id);
                 const safeName = escapeHtml(player.displayName);
                 const safeJersey = player.jersey ? escapeHtml(player.jersey) : '';

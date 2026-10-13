@@ -263,4 +263,43 @@ async function fetchTeamSchedule(sportPath, teamId) {
         console.error('Error fetching team schedule:', e);
     }
     return { events: [] };
-}
+}
+
+async function fetchTeamRoster(sportPath, teamId) {
+    const sPath = sportPath || getSportPath();
+    const tId = teamId || getFavoriteTeamId();
+    const rosterUrl = `https://site.api.espn.com/apis/site/v2/sports/basketball/${encodeURIComponent(sPath)}/teams/${encodeURIComponent(tId)}/roster`;
+
+    try {
+        const response = await fetch(rosterUrl);
+        if (response.ok) {
+            const data = await response.json();
+            const athletes = data.athletes || data.team?.athletes || [];
+            if (!data.team) data.team = {};
+            if (!data.team.athletes) data.team.athletes = athletes;
+            if (!data.athletes) data.athletes = athletes;
+            return data;
+        }
+    } catch (err) {
+        console.warn('Error fetching team roster from /roster endpoint:', err);
+    }
+
+    // Fallback attempt in case proxy/environment enables query param
+    try {
+        const fallbackUrl = `https://site.api.espn.com/apis/site/v2/sports/basketball/${encodeURIComponent(sPath)}/teams/${encodeURIComponent(tId)}?enable=roster`;
+        const res = await fetch(fallbackUrl);
+        if (res.ok) {
+            const data = await res.json();
+            const athletes = data.athletes || data.team?.athletes || [];
+            if (!data.team) data.team = {};
+            if (!data.team.athletes) data.team.athletes = athletes;
+            if (!data.athletes) data.athletes = athletes;
+            return data;
+        }
+    } catch (fallbackErr) {
+        console.warn('Fallback roster fetch failed:', fallbackErr);
+    }
+
+    return null;
+}
+

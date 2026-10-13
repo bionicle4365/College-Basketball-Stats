@@ -17,58 +17,32 @@ permalink: /standings/
     const SPORT_PATH = getSportPath();
     let targetGroupId = null;
 
-    // 1. Fetch Team Data to get Conference ID
-    fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${SPORT_PATH}/teams/${TEAM_ID}`)
+    // Fetch Standings
+    fetch(`https://site.api.espn.com/apis/v2/sports/basketball/${SPORT_PATH}/standings`)
         .then(r => r.json())
         .then(data => {
-            const groups = data.team.groups;
-            let groupId = null;
-            
-            // Find the conference group ID
-            if (groups) {
-                if (groups.isConference) {
-                    groupId = groups.id;
-                } else if (Array.isArray(groups)) {
-                    const conf = groups.find(g => g.isConference);
-                    groupId = conf ? conf.id : groups[0].id;
-                }
-            }
-
-            if (!groupId) throw new Error("Conference not found");
-            targetGroupId = groupId;
-
-            // 2. Fetch Standings for that Group
-            return fetch(`https://site.api.espn.com/apis/v2/sports/basketball/${SPORT_PATH}/standings?group=${groupId}`);
-        })
-        .then(r => r.json())
-        .then(data => {
-            document.getElementById('conf-name').textContent = data.name || 'Conference Standings';
-            
-            let html = `<table class="standings-table">
-                <thead>
-                    <tr>
-                        <th>Rank</th>
-                        <th>Team</th>
-                        <th>Conf</th>
-                        <th>Overall</th>
-                    </tr>
-                </thead>
-                <tbody>`;
-            
             let standings = [];
-            if (data.standings && data.standings.entries) {
+            let confName = data.name || 'Conference Standings';
+
+            if (data.children && data.children.length > 0) {
+                let matchedConf = data.children.find(child => {
+                    const entries = child.standings?.entries || [];
+                    return entries.some(e => String(e.team?.id) === String(TEAM_ID));
+                });
+                if (!matchedConf) {
+                    matchedConf = data.children[0];
+                }
+                if (matchedConf) {
+                    confName = matchedConf.name || confName;
+                    standings = matchedConf.standings?.entries || [];
+                }
+            } else if (data.standings && data.standings.entries) {
                 standings = data.standings.entries;
             } else if (Array.isArray(data.standings)) {
                 standings = data.standings;
-            } else if (data.children) {
-                const groupData = data.children.find(c => String(c.id) === String(targetGroupId)) || data.children[0];
-                if (groupData && groupData.standings && groupData.standings.entries) {
-                    standings = groupData.standings.entries;
-                    if (groupData.name) {
-                        document.getElementById('conf-name').textContent = groupData.name;
-                    }
-                }
             }
+
+            document.getElementById('conf-name').textContent = confName;
             
             standings.sort((a, b) => {
                 const getRank = (entry) => {
