@@ -275,6 +275,14 @@ body.dark-mode .standings-table tr.highlight-team { background-color: #1b3a1e; c
 .last-play-badge { font-weight: bold; color: #cc0000; margin-right: 6px; text-transform: uppercase; font-size: 0.75rem; }
 .last-play-text { color: #495057; }
 
+/* Mock Live Demo Banners */
+.mock-demo-banner { display: flex; justify-content: space-between; align-items: center; background: #fff8e1; border: 1px solid #ffe082; color: #856404; padding: 10px 16px; border-radius: 8px; margin-bottom: 16px; font-size: 0.88rem; box-shadow: 0 1px 4px rgba(0,0,0,0.05); }
+.mock-demo-banner-exit { color: #b71c1c; font-weight: bold; text-decoration: underline; margin-left: 12px; white-space: nowrap; }
+.mock-demo-banner-exit:hover { color: #d32f2f; }
+.mock-preview-bar { text-align: center; margin: 18px auto 8px auto; font-size: 0.84rem; color: #666; }
+.mock-preview-link { color: #cc0000; font-weight: bold; text-decoration: underline; margin-left: 6px; }
+.mock-preview-link:hover { color: #990000; }
+
 /* Enhanced Groups Page */
 .group-header-card { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; background: #fff; padding: 15px 20px; border-radius: 8px; border: 1px solid #eee; margin-bottom: 20px; }
 .group-meta { display: flex; align-items: center; gap: 12px; }
@@ -328,6 +336,12 @@ body.dark-mode .linescore-table th { background: #2d2d2d; color: #e0e0e0; border
 body.dark-mode .linescore-table td { border-color: #333; color: #e0e0e0; }
 body.dark-mode .last-play-card { background: #1f1f1f; border-color: #333; border-left-color: #cc0000; }
 body.dark-mode .last-play-text { color: #ccc; }
+body.dark-mode .mock-demo-banner { background: #2e2600; border-color: #534500; color: #ffe57f; }
+body.dark-mode .mock-demo-banner-exit { color: #ff8a80; }
+body.dark-mode .mock-demo-banner-exit:hover { color: #ff5252; }
+body.dark-mode .mock-preview-bar { color: #aaa; }
+body.dark-mode .mock-preview-link { color: #ff8a80; }
+body.dark-mode .mock-preview-link:hover { color: #ff5252; }
 
 body.dark-mode .group-header-card { background: #1e1e1e; border-color: #333; }
 body.dark-mode .group-badge-pill { background: #333; color: #ccc; }

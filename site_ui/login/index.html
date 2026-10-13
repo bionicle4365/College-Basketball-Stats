@@ -24,13 +24,15 @@ permalink: /login/
 
 <script>
     // Redirect if already logged in
-    auth.onAuthStateChanged(user => {
-        if (user) {
-            localStorage.setItem('isLoggedIn', 'true');
-            localStorage.setItem('username', user.displayName || user.email.split('@')[0]);
-            window.location.href = '/College-Basketball-Stats/scoreboard';
-        }
-    });
+    if (typeof auth !== 'undefined' && auth) {
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                localStorage.setItem('isLoggedIn', 'true');
+                localStorage.setItem('username', user.displayName || user.email.split('@')[0]);
+                window.location.href = '/College-Basketball-Stats/scoreboard';
+            }
+        });
+    }
 
         let isSignUp = false;
 
@@ -61,6 +63,12 @@ permalink: /login/
         }
 
         function googleLogin() {
+            if (typeof auth === 'undefined' || !auth) {
+                const errorDiv = document.getElementById('error');
+                errorDiv.textContent = 'Firebase authentication is initializing or unavailable. Please refresh or try again.';
+                errorDiv.style.display = 'block';
+                return;
+            }
             const provider = new firebase.auth.GoogleAuthProvider();
             auth.signInWithPopup(provider)
                 .then((result) => {
@@ -68,9 +76,11 @@ permalink: /login/
                     localStorage.setItem('username', result.user.displayName || result.user.email.split('@')[0]);
                     
                     // Ensure user settings exist
-                    db.collection('user_settings').doc(result.user.uid).set({
-                        favoriteTeamId: '152' // Default
-                    }, { merge: true });
+                    if (typeof db !== 'undefined' && db) {
+                        db.collection('user_settings').doc(result.user.uid).set({
+                            favoriteTeamId: '152' // Default
+                        }, { merge: true });
+                    }
 
                     window.location.href = '/College-Basketball-Stats/scoreboard';
                 }).catch((error) => {
@@ -85,6 +95,12 @@ permalink: /login/
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
             const error = document.getElementById('error');
+
+            if (typeof auth === 'undefined' || !auth) {
+                error.textContent = 'Firebase authentication is initializing or unavailable. Please refresh or try again.';
+                error.style.display = 'block';
+                return;
+            }
 
             if (isSignUp) {
                 const confirmPass = document.getElementById('confirm-password').value;

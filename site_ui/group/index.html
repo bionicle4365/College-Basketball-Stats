@@ -67,6 +67,7 @@ permalink: /groups/
     </div>
 
     <script>
+        checkAuth();
         const TEAM_ID = getFavoriteTeamId();
         const LEAGUE = getLeague();
         const SPORT_PATH = getSportPath();
@@ -75,14 +76,16 @@ permalink: /groups/
         let groupMemberStats = {};
         let groupGamesData = [];
 
-        auth.onAuthStateChanged(user => {
-            if (user) {
-                USER_UID = user.uid;
-                handleRouting();
-            } else {
-                window.location.href = '/College-Basketball-Stats/login';
-            }
-        });
+        if (typeof auth !== 'undefined' && auth) {
+            auth.onAuthStateChanged(user => {
+                if (user) {
+                    USER_UID = user.uid;
+                    handleRouting();
+                } else {
+                    window.location.href = '/College-Basketball-Stats/login';
+                }
+            });
+        }
 
         window.addEventListener('hashchange', handleRouting);
 

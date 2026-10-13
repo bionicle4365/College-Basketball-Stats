@@ -62,6 +62,8 @@ async function verifyPassword(enteredPassword, salt, storedHash) {
 }
 
 function checkAuth() {
+    const isMock = new URLSearchParams(window.location.search).get('mock') === 'live' || new URLSearchParams(window.location.search).get('demo') === 'live';
+    if (isMock) return;
     if (localStorage.getItem('isLoggedIn') !== 'true') {
         window.location.href = '/College-Basketball-Stats/login';
         return;

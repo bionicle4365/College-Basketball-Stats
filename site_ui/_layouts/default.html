@@ -4,7 +4,7 @@
     <title>{{ page.title }} - {{ site.title }}</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#cc0000">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://a.espncdn.com; connect-src 'self' https://site.api.espn.com https://site.web.api.espn.com https://*.googleapis.com https://*.firebaseio.com https://*.firebase.com wss://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com; frame-src https://*.firebaseapp.com; font-src 'self'; base-uri 'self'; form-action 'self';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdn.jsdelivr.net https://apis.google.com https://*.google.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://a.espncdn.com https://*.googleusercontent.com; connect-src 'self' https://site.api.espn.com https://site.web.api.espn.com https://*.googleapis.com https://*.firebaseio.com https://*.firebase.com https://*.firebaseapp.com wss://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://www.gstatic.com https://*.google.com https://accounts.google.com https://apis.google.com; frame-src https://*.firebaseapp.com https://accounts.google.com https://*.google.com; font-src 'self'; base-uri 'self'; form-action 'self';">
     <meta http-equiv="X-Content-Type-Options" content="nosniff">
     <meta name="referrer" content="strict-origin-when-cross-origin">
     <link rel="manifest" href="{{ site.baseurl }}/manifest.json">
@@ -15,7 +15,7 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
     {% if jekyll.environment == "development" %}
-    <script src="{{ site.baseurl }}/common.local.js?v={{ site.time | date: '%s' }}"></script>
+    <script src="{{ site.baseurl }}/common.local.js?v={{ site.time | date: '%s' }}" onerror="this.onerror=null;this.src='{{ site.baseurl }}/common.js';"></script>
     <script>console.log("Debug Mode: Using common.local.js");</script>
     {% else %}
     <script src="{{ site.baseurl }}/common.js?v={{ site.time | date: '%s' }}"></script>
