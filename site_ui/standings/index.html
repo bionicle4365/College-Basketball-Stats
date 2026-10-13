@@ -15,7 +15,6 @@ permalink: /standings/
 
     const TEAM_ID = getFavoriteTeamId();
     const SPORT_PATH = getSportPath();
-    let targetGroupId = null;
 
     // Fetch Standings
     fetch(`https://site.api.espn.com/apis/v2/sports/basketball/${SPORT_PATH}/standings`)
@@ -43,18 +42,34 @@ permalink: /standings/
             }
 
             document.getElementById('conf-name').textContent = confName;
-            
+
+            if (!standings || standings.length === 0) {
+                document.getElementById('standings-content').innerHTML = '<div class="no-data">No standings available.</div>';
+                return;
+            }
+
             standings.sort((a, b) => {
                 const getRank = (entry) => {
-                    const r = entry.stats.find(s => s.type === 'playoffseed');
+                    const r = (entry.stats || []).find(s => s.type === 'playoffseed');
                     return r ? parseFloat(r.value) : 999;
                 };
                 return getRank(a) - getRank(b);
             });
 
+            let html = `<table class="standings-table">
+                <thead>
+                    <tr>
+                        <th>Rank</th>
+                        <th>Team</th>
+                        <th>Conf</th>
+                        <th>Overall</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+
             standings.forEach((entry, index) => {
-                const team = entry.team;
-                const stats = entry.stats;
+                const team = entry.team || {};
+                const stats = entry.stats || [];
                 const apRank = team.rank ? escapeHtml(team.rank) + ' ' : '';
                 const confRank = stats.find(r => r.type === 'playoffseed');
                 const isMyTeam = String(team.id) === String(TEAM_ID);
@@ -63,7 +78,7 @@ permalink: /standings/
 
                 html += `<tr class="${isMyTeam ? 'highlight-team' : ''}">
                     <td>${confRank ? escapeHtml(confRank.displayValue) : (index + 1)}</td>
-                    <td>${getTeamLogoHtml(team)} ${apRank}${escapeHtml(team.shortDisplayName || team.displayName)}</td>
+                    <td>${getTeamLogoHtml(team)} ${apRank}${escapeHtml(team.shortDisplayName || team.displayName || 'Unknown')}</td>
                     <td>${escapeHtml(confRecord.summary)}</td>
                     <td>${escapeHtml(overallRecord.summary)}</td>
                 </tr>`;
