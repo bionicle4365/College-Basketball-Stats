@@ -72,8 +72,8 @@
     </div>
     <script>
         // Initialize league selection (supports ?league= query param or localStorage)
-        const urlParams = new URLSearchParams(window.location.search);
-        const urlLeague = urlParams.get('league');
+        const layoutUrlParams = new URLSearchParams(window.location.search);
+        const urlLeague = layoutUrlParams.get('league');
         let currentLeague = localStorage.getItem('league') || 'mens';
         if (urlLeague && (urlLeague === 'mens' || urlLeague === 'womens')) {
             currentLeague = urlLeague;

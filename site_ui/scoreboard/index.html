@@ -99,8 +99,7 @@ permalink: /scoreboard/
 
 <script>
   checkAuth();
-  const urlParams = new URLSearchParams(window.location.search);
-  const isMockLive = urlParams.get('mock') === 'live' || urlParams.get('demo') === 'live';
+  const isMockLive = new URLSearchParams(window.location.search).get('mock') === 'live' || new URLSearchParams(window.location.search).get('demo') === 'live';
   const TEAM_ID = getFavoriteTeamId();
   let USER_UID = isMockLive ? 'mock-user-123' : null;
 

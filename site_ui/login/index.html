@@ -23,13 +23,34 @@ permalink: /login/
 </div>
 
 <script>
-    // Redirect if already logged in
+    function handleAuthSuccess(user) {
+        if (!user) return;
+        localStorage.setItem('isLoggedIn', 'true');
+        localStorage.setItem('username', user.displayName || user.email.split('@')[0]);
+        if (typeof db !== 'undefined' && db) {
+            db.collection('user_settings').doc(user.uid).set({
+                favoriteTeamId: '152' // Default
+            }, { merge: true }).finally(() => {
+                window.location.href = '/College-Basketball-Stats/scoreboard';
+            });
+        } else {
+            window.location.href = '/College-Basketball-Stats/scoreboard';
+        }
+    }
+
+    // Redirect if already logged in or returning from redirect
     if (typeof auth !== 'undefined' && auth) {
+        auth.getRedirectResult().then(result => {
+            if (result && result.user) {
+                handleAuthSuccess(result.user);
+            }
+        }).catch(err => {
+            console.warn('Redirect sign-in error:', err);
+        });
+
         auth.onAuthStateChanged(user => {
             if (user) {
-                localStorage.setItem('isLoggedIn', 'true');
-                localStorage.setItem('username', user.displayName || user.email.split('@')[0]);
-                window.location.href = '/College-Basketball-Stats/scoreboard';
+                handleAuthSuccess(user);
             }
         });
     }
@@ -72,18 +93,14 @@ permalink: /login/
             const provider = new firebase.auth.GoogleAuthProvider();
             auth.signInWithPopup(provider)
                 .then((result) => {
-                    localStorage.setItem('isLoggedIn', 'true');
-                    localStorage.setItem('username', result.user.displayName || result.user.email.split('@')[0]);
-                    
-                    // Ensure user settings exist
-                    if (typeof db !== 'undefined' && db) {
-                        db.collection('user_settings').doc(result.user.uid).set({
-                            favoriteTeamId: '152' // Default
-                        }, { merge: true });
-                    }
-
-                    window.location.href = '/College-Basketball-Stats/scoreboard';
+                    handleAuthSuccess(result.user);
                 }).catch((error) => {
+                    // Fallback to redirect if popup is blocked by COOP or browser security
+                    if (error.code === 'auth/popup-blocked' || error.code === 'auth/cancelled-popup-request') {
+                        console.warn('Popup blocked, falling back to signInWithRedirect:', error);
+                        auth.signInWithRedirect(provider);
+                        return;
+                    }
                     const errorDiv = document.getElementById('error');
                     errorDiv.textContent = error.message;
                     errorDiv.style.display = 'block';
