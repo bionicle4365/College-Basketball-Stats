@@ -7,10 +7,88 @@ permalink: /scoreboard/
   <div id="game-display" class="game-card">
     <div class="loading">Loading stats...</div>
   </div>
+  <!-- Player VAL Breakdown Modal -->
   <div id="val-modal" class="modal-overlay" onclick="closeValModal(event)">
     <div class="modal-box">
         <span class="modal-close" onclick="closeValModal(event)">&times;</span>
         <div id="val-modal-body" class="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- VAL Formula Explanation Modal -->
+  <div id="val-formula-modal" class="modal-overlay" onclick="closeValFormulaModal(event)">
+    <div class="modal-box val-formula-modal-box">
+        <span class="modal-close" onclick="closeValFormulaModal(event)">&times;</span>
+        <div id="val-formula-content" class="val-formula-content">
+            <div class="val-formula-header">
+                <h3>VAL (Value Rating) Formula</h3>
+                <span class="val-source-pill">ESPN Fantasy Standard</span>
+            </div>
+            <p class="val-intro-text">
+                VAL is a composite efficiency metric that quantifies a player's total single-game impact for your Pick'em matchups. It rewards efficiency and defensive impact while penalizing missed shots and turnovers.
+            </p>
+            
+            <div class="val-formula-math-box">
+                <code>VAL = PTS + 3PM - FGA + (2 × FGM) - FTA + FTM + REB + (2 × AST) + (4 × STL) + (4 × BLK) - (2 × TO)</code>
+            </div>
+
+            <div class="val-section-title">Net Impact Per Action</div>
+            <div class="val-cards-grid">
+                <div class="val-card val-positive">
+                    <span class="val-card-val">+5</span>
+                    <div class="val-card-desc">
+                        <strong>3-Point Made</strong>
+                        <small>+3 PTS, +1 3PM, +2 FGM, -1 FGA</small>
+                    </div>
+                </div>
+                <div class="val-card val-positive">
+                    <span class="val-card-val">+4</span>
+                    <div class="val-card-desc">
+                        <strong>Steal / Block</strong>
+                        <small>High-impact defensive stops</small>
+                    </div>
+                </div>
+                <div class="val-card val-positive">
+                    <span class="val-card-val">+3</span>
+                    <div class="val-card-desc">
+                        <strong>2-Point Made</strong>
+                        <small>+2 PTS, +2 FGM, -1 FGA</small>
+                    </div>
+                </div>
+                <div class="val-card val-positive">
+                    <span class="val-card-val">+2</span>
+                    <div class="val-card-desc">
+                        <strong>Assist</strong>
+                        <small>Playmaking & creation</small>
+                    </div>
+                </div>
+                <div class="val-card val-neutral">
+                    <span class="val-card-val">+1</span>
+                    <div class="val-card-desc">
+                        <strong>Rebound / FT Made</strong>
+                        <small>+1 board | +1 made FT</small>
+                    </div>
+                </div>
+                <div class="val-card val-negative">
+                    <span class="val-card-val">-1</span>
+                    <div class="val-card-desc">
+                        <strong>Missed Shot</strong>
+                        <small>-1 per missed FG or FT</small>
+                    </div>
+                </div>
+                <div class="val-card val-negative">
+                    <span class="val-card-val">-2</span>
+                    <div class="val-card-desc">
+                        <strong>Turnover</strong>
+                        <small>Lost possession penalty</small>
+                    </div>
+                </div>
+            </div>
+
+            <div class="val-footer-note">
+                💡 <em>Tip: Tap the <strong>ℹ️</strong> badge next to any player in the box score below to see their exact live point-by-point breakdown.</em>
+            </div>
+        </div>
     </div>
   </div>
 </div>
@@ -28,23 +106,144 @@ permalink: /scoreboard/
   function showValBreakdown(element) {
       const breakdown = element.getAttribute('data-breakdown');
       if (breakdown) {
-          document.getElementById('val-modal-body').textContent = breakdown;
+          const bodyEl = document.getElementById('val-modal-body');
+          bodyEl.innerHTML = `<pre class="val-breakdown-pre">${escapeHtml(breakdown)}</pre>
+            <div class="val-breakdown-formula-link">
+              <button type="button" class="btn-text-link" onclick="openFormulaFromBreakdown()">ℹ️ How is this calculated? View VAL Formula</button>
+            </div>`;
           document.getElementById('val-modal').style.display = 'flex';
       }
   }
 
+  function openFormulaFromBreakdown() {
+      document.getElementById('val-modal').style.display = 'none';
+      showValFormulaModal();
+  }
+
+  function showValFormulaModal(event) {
+      if (event && event.stopPropagation) event.stopPropagation();
+      document.getElementById('val-formula-modal').style.display = 'flex';
+  }
+
+  function closeValFormulaModal(event) {
+      if (!event || event.target.id === 'val-formula-modal' || event.target.classList.contains('modal-close')) {
+          document.getElementById('val-formula-modal').style.display = 'none';
+      }
+  }
+
   function closeValModal(event) {
-      if (event.target.id === 'val-modal' || event.target.classList.contains('modal-close')) {
+      if (!event || event.target.id === 'val-modal' || event.target.classList.contains('modal-close')) {
           document.getElementById('val-modal').style.display = 'none';
       }
   }
 
-  function fetchPick(gameId, type) {
-      if (!USER_UID || !gameId || !/^[0-9]+$/.test(String(gameId).trim())) return Promise.resolve(null);
+  document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+          const valModal = document.getElementById('val-modal');
+          const formulaModal = document.getElementById('val-formula-modal');
+          if (valModal) valModal.style.display = 'none';
+          if (formulaModal) formulaModal.style.display = 'none';
+      }
+  });
+
+  let currentGamePicks = {};
+  let userGroups = [];
+  let activeGroupId = null;
+  let userProfilesCache = {};
+  let currentRosterCache = null;
+  let lastRenderParams = null;
+
+  async function getCachedRoster(type, teamId) {
+      if (currentRosterCache && currentRosterCache.teamId === teamId && currentRosterCache.type === type) {
+          return currentRosterCache.data;
+      }
+      const sportPath = getSportPath(type);
+      try {
+          const data = await fetchTeamRoster(sportPath, teamId);
+          if (data) {
+              currentRosterCache = { teamId, type, data };
+          }
+          return data;
+      } catch (e) {
+          return null;
+      }
+  }
+
+  async function fetchGamePicks(gameId, type) {
+      if (!USER_UID || !gameId || !/^[0-9]+$/.test(String(gameId).trim())) {
+          currentGamePicks = {};
+          return { userPick: null, allPicks: {} };
+      }
       const collectionName = getCollectionName(TEAM_ID, type);
-      return db.collection(collectionName).doc(String(gameId)).get()
-          .then(doc => doc.exists ? doc.data()[USER_UID] : null)
-          .catch(() => null);
+      try {
+          const doc = await db.collection(collectionName).doc(String(gameId)).get();
+          const data = doc.exists ? doc.data() : {};
+          currentGamePicks = data;
+          return {
+              userPick: data[USER_UID] || null,
+              allPicks: data
+          };
+      } catch (err) {
+          console.warn('Error fetching game picks:', err);
+          currentGamePicks = {};
+          return { userPick: null, allPicks: {} };
+      }
+  }
+
+  function fetchPick(gameId, type) {
+      return fetchGamePicks(gameId, type).then(res => res.userPick);
+  }
+
+  async function loadUserGroups(teamId, league) {
+      if (!USER_UID || typeof db === 'undefined' || !db) {
+          userGroups = [];
+          return [];
+      }
+      try {
+          const snapshot = await db.collection('groups')
+              .where('teamId', '==', teamId)
+              .where('league', '==', league)
+              .get();
+          const groups = [];
+          snapshot.forEach(doc => {
+              const data = doc.data();
+              data.id = doc.id;
+              if (data.members && data.members.includes(USER_UID)) {
+                  groups.push(data);
+              }
+          });
+          userGroups = groups;
+          if (groups.length > 0) {
+              if (!activeGroupId || !groups.some(g => g.id === activeGroupId)) {
+                  activeGroupId = groups[0].id;
+              }
+              const allUids = new Set();
+              groups.forEach(g => (g.members || []).forEach(uid => allUids.add(uid)));
+              await fetchUserProfiles([...allUids]);
+          } else {
+              activeGroupId = null;
+          }
+          return groups;
+      } catch (err) {
+          console.warn('Error loading user groups for scoreboard:', err);
+          userGroups = [];
+          return [];
+      }
+  }
+
+  async function fetchUserProfiles(uids) {
+      if (!uids || !uids.length || typeof db === 'undefined' || !db) return;
+      const toFetch = uids.filter(uid => !userProfilesCache[uid]);
+      if (toFetch.length === 0) return;
+      await Promise.all(toFetch.map(uid => 
+          db.collection('user_settings').doc(uid).get()
+              .then(d => {
+                  userProfilesCache[uid] = d.exists ? d.data() : {};
+              })
+              .catch(() => {
+                  userProfilesCache[uid] = {};
+              })
+      ));
   }
 
   function savePick(gameId, gameDateStr) {
@@ -90,6 +289,11 @@ permalink: /scoreboard/
           const banner = document.getElementById('game-banner');
           if (banner) banner.style.display = 'none';
           sessionStorage.setItem('dismissed_banner_' + gameId, 'true');
+          
+          // Instant local update for group widget
+          currentGamePicks[USER_UID] = playerId;
+          currentGamePicks[`${USER_UID}_time`] = Date.now();
+          renderScoreboardGroupWidgetDirect();
       })
       .catch((error) => {
           console.error("Error saving pick: ", error);
@@ -146,6 +350,8 @@ permalink: /scoreboard/
                   messageEl.style.color = '#888';
               }
               stopPickCountdown();
+              // Seamlessly transition to live picks and stats when deadline expires
+              loadStats(localStorage.getItem('league') || 'mens', true);
               return;
           }
 
@@ -210,16 +416,13 @@ permalink: /scoreboard/
             } else {
                 stopLivePolling();
             }
-            const promises = [fetchPick(gameId, type)];
-            
-            if (state === 'pre') {
-                 const sportPath = getSportPath(type);
-                 promises.push(fetchTeamRoster(sportPath, TEAM_ID));
-            } else {
-                 promises.push(Promise.resolve(null));
-            }
+            const promises = [
+                fetchPick(gameId, type),
+                loadUserGroups(TEAM_ID, type),
+                getCachedRoster(type, TEAM_ID)
+            ];
 
-            Promise.all(promises).then(([pickedPlayerId, rosterData]) => {
+            Promise.all(promises).then(([pickedPlayerId, _, rosterData]) => {
                 if (summary && summary.header) {
                     renderGame(summary.header, summary, null, pickedPlayerId, rosterData, type);
                 } else {
@@ -255,13 +458,15 @@ permalink: /scoreboard/
             const summaryUrl = ENDPOINTS[type].replace('scoreboard', 'summary') + '?event=' + game.id;
             return Promise.all([
                 fetch(summaryUrl).then(r => r.json()),
-                fetchPick(game.id, type)
-            ]).then(([summary, pickedPlayerId]) => renderGame(game, summary, null, pickedPlayerId, null, type));
+                fetchPick(game.id, type),
+                loadUserGroups(TEAM_ID, type),
+                getCachedRoster(type, TEAM_ID)
+            ]).then(([summary, pickedPlayerId, _, rosterData]) => renderGame(game, summary, null, pickedPlayerId, rosterData, type));
           } else if (state === 'pre') {
-             const sportPath = getSportPath(type);
              return Promise.all([
                  fetchPick(game.id, type),
-                 fetchTeamRoster(sportPath, TEAM_ID)
+                 getCachedRoster(type, TEAM_ID),
+                 loadUserGroups(TEAM_ID, type)
              ]).then(([pickedPlayerId, rosterData]) => {
                  renderGame(game, null, null, pickedPlayerId, rosterData, type);
              });
@@ -315,10 +520,10 @@ permalink: /scoreboard/
             }
 
             if (state === 'pre') {
-                 const sportPath = getSportPath(type);
                  return Promise.all([
                      fetchPick(targetGame.id, type),
-                     fetchTeamRoster(sportPath, TEAM_ID)
+                     getCachedRoster(type, TEAM_ID),
+                     loadUserGroups(TEAM_ID, type)
                  ]).then(([pickedPlayerId, rosterData]) => {
                      renderGame(targetGame, null, nextGame, pickedPlayerId, rosterData, type);
                  });
@@ -326,8 +531,10 @@ permalink: /scoreboard/
                 const summaryUrl = ENDPOINTS[type].replace('scoreboard', 'summary') + '?event=' + targetGame.id;
                 return Promise.all([
                     fetch(summaryUrl).then(r => r.json()),
-                    fetchPick(targetGame.id, type)
-                ]).then(([summary, pickedPlayerId]) => renderGame(summary.header, summary, nextGame, pickedPlayerId, null, type));
+                    fetchPick(targetGame.id, type),
+                    loadUserGroups(TEAM_ID, type),
+                    getCachedRoster(type, TEAM_ID)
+                ]).then(([summary, pickedPlayerId, _, rosterData]) => renderGame(summary.header, summary, nextGame, pickedPlayerId, rosterData, type));
             }
           });
       })
@@ -390,6 +597,338 @@ permalink: /scoreboard/
               ${buildRow(homeTeam)}
             </tbody>
           </table>
+        </div>
+      `;
+  }
+
+  function buildPlayerValMap(summary, rosterData) {
+      const map = {};
+      const athletes = rosterData?.athletes || rosterData?.team?.athletes || [];
+      athletes.forEach(a => {
+          if (a && a.id) {
+              const id = String(a.id);
+              map[id] = {
+                  id: id,
+                  val: 0,
+                  name: a.shortName || a.displayName,
+                  displayName: a.displayName,
+                  jersey: a.jersey || ''
+              };
+          }
+      });
+
+      if (summary && summary.boxscore && summary.boxscore.players) {
+          summary.boxscore.players.forEach(teamBox => {
+              const statsData = teamBox.statistics && teamBox.statistics[0];
+              if (statsData && statsData.names && statsData.athletes) {
+                  const labels = statsData.names;
+                  statsData.athletes.forEach(p => {
+                      if (p.athlete && p.stats && p.stats.length > 0) {
+                          const id = String(p.athlete.id);
+                          const val = calculateVal(p.stats, labels);
+                          const name = p.athlete.shortName || p.athlete.displayName;
+                          map[id] = {
+                              id: id,
+                              val: val,
+                              name: name,
+                              displayName: p.athlete.displayName,
+                              jersey: p.athlete.jersey || (map[id]?.jersey || '')
+                          };
+                      }
+                  });
+              }
+          });
+      }
+      return map;
+  }
+
+  function switchScoreboardGroup(groupId) {
+      activeGroupId = groupId;
+      renderScoreboardGroupWidgetDirect();
+  }
+
+  function toggleScoreboardGroupCollapse(groupId) {
+      const key = 'sb_group_collapsed_' + groupId;
+      const current = localStorage.getItem(key) === 'true';
+      localStorage.setItem(key, String(!current));
+      renderScoreboardGroupWidgetDirect();
+  }
+
+  function renderScoreboardGroupWidgetDirect() {
+      if (!lastRenderParams) return;
+      const { event, summaryData, rosterData, type, state, gameDate } = lastRenderParams;
+      const container = document.getElementById('scoreboard-group-container');
+      if (container) {
+          container.innerHTML = renderScoreboardGroupWidget(event, summaryData, rosterData, type, state, gameDate);
+      }
+  }
+
+  function renderScoreboardGroupWidget(event, summaryData, rosterData, type, state, gameDate) {
+      lastRenderParams = { event, summaryData, rosterData, type, state, gameDate };
+
+      if (!USER_UID) {
+          return '';
+      }
+
+      if (!userGroups || userGroups.length === 0) {
+          const homeTeam = event.competitions?.[0]?.competitors?.find(c => c.homeAway === 'home');
+          const awayTeam = event.competitions?.[0]?.competitors?.find(c => c.homeAway === 'away');
+          const myTeam = [homeTeam, awayTeam].find(c => c && String(c.team.id) === String(TEAM_ID));
+          const teamName = myTeam?.team?.shortDisplayName || myTeam?.team?.nickname || 'your team';
+
+          return `
+            <div class="scoreboard-group-widget empty-state" id="sb-group-widget">
+              <div class="sb-group-empty-inner">
+                <div class="sb-group-empty-left">
+                  <span class="sb-group-empty-icon">👥</span>
+                  <div class="sb-group-empty-text">
+                    <strong>Compete with Friends in Pick'em Groups</strong>
+                    <p>Join or create a group for ${escapeHtml(teamName)} to track live rankings on this scoreboard.</p>
+                  </div>
+                </div>
+                <a href="/College-Basketball-Stats/groups" class="btn btn-primary btn-sm sb-group-empty-btn">Explore Groups &rarr;</a>
+              </div>
+            </div>
+          `;
+      }
+
+      let activeGroup = userGroups.find(g => g.id === activeGroupId) || userGroups[0];
+      activeGroupId = activeGroup.id;
+
+      const isTipoffPassed = gameDate ? (Date.now() >= new Date(gameDate).getTime()) : false;
+      const isLocked = state !== 'pre' || isTipoffPassed;
+      const isCollapsed = localStorage.getItem('sb_group_collapsed_' + activeGroup.id) === 'true';
+
+      const playerValMap = buildPlayerValMap(summaryData, rosterData);
+      const members = activeGroup.members || [];
+
+      // Multi-group switcher pills (if in > 1 group)
+      let pillsHtml = '';
+      if (userGroups.length > 1) {
+          pillsHtml = `
+            <div class="sb-group-pills">
+              ${userGroups.map(g => `
+                <button type="button" class="sb-group-pill ${g.id === activeGroup.id ? 'active' : ''}" 
+                        onclick="switchScoreboardGroup('${escapeHtml(g.id)}')">
+                  ${escapeHtml(g.name)}
+                </button>
+              `).join('')}
+            </div>
+          `;
+      }
+
+      // --- PRE-LOCK (Game not started, before tip-off) ---
+      if (!isLocked) {
+          let submittedCount = 0;
+          const memberRows = members.map(uid => {
+              const hasSubmitted = Boolean(currentGamePicks[uid]);
+              if (hasSubmitted) submittedCount++;
+              const profile = userProfilesCache[uid] || {};
+              const isYou = uid === USER_UID;
+              const name = profile.displayName || (isYou ? 'You' : `Member ${uid.substring(0, 5)}`);
+              const initials = (name || '?').substring(0, 2).toUpperCase();
+              return { uid, name, initials, isYou, hasSubmitted };
+          });
+
+          memberRows.sort((a, b) => {
+              if (a.isYou) return -1;
+              if (b.isYou) return 1;
+              if (a.hasSubmitted && !b.hasSubmitted) return -1;
+              if (!a.hasSubmitted && b.hasSubmitted) return 1;
+              return a.name.localeCompare(b.name);
+          });
+
+          const summaryPreview = `${submittedCount}/${members.length} Picks Submitted · 🔒 Locks at Tip-off`;
+
+          if (isCollapsed) {
+              return `
+                <div class="scoreboard-group-widget" id="sb-group-widget">
+                  ${pillsHtml}
+                  <div class="sb-group-collapsed-bar" onclick="toggleScoreboardGroupCollapse('${escapeHtml(activeGroup.id)}')">
+                    <div class="sb-group-collapsed-left">
+                      <span class="sb-group-collapsed-icon">👥</span>
+                      <span class="sb-group-collapsed-title">${escapeHtml(activeGroup.name)}</span>
+                      <span class="sb-group-collapsed-preview">${summaryPreview}</span>
+                    </div>
+                    <button type="button" class="sb-group-toggle-btn" aria-label="Expand">Expand ▾</button>
+                  </div>
+                </div>
+              `;
+          }
+
+          const rowsHtml = memberRows.map(m => `
+            <tr class="sb-group-row ${m.isYou ? 'sb-is-you' : ''}">
+              <td class="sb-group-cell-rank">
+                <span class="rank-badge rank-none">-</span>
+              </td>
+              <td class="sb-group-cell-member">
+                <div class="sb-group-member-info">
+                  <span class="sb-group-avatar">${escapeHtml(m.initials)}</span>
+                  <span class="sb-group-member-name">${escapeHtml(m.name)}${m.isYou ? ' <span class="user-you-tag">You</span>' : ''}</span>
+                </div>
+              </td>
+              <td class="sb-group-cell-pick">
+                ${m.hasSubmitted 
+                    ? '<span class="sb-status-badge submitted">✓ Pick Submitted</span>' 
+                    : '<span class="sb-status-badge waiting">⏳ Waiting for pick</span>'}
+              </td>
+              <td class="sb-group-cell-val">
+                <span class="sb-val-pill sb-val-hidden">🔒 Hidden</span>
+              </td>
+            </tr>
+          `).join('');
+
+          return `
+            <div class="scoreboard-group-widget" id="sb-group-widget">
+              ${pillsHtml}
+              <div class="sb-group-header">
+                <div class="sb-group-header-left">
+                  <div class="sb-group-title">
+                    👥 ${escapeHtml(activeGroup.name)}
+                  </div>
+                  <span class="sb-group-status-pill sb-status-pre">🔒 Locks at Tip-off (${submittedCount}/${members.length})</span>
+                </div>
+                <button type="button" class="sb-group-toggle-btn" onclick="toggleScoreboardGroupCollapse('${escapeHtml(activeGroup.id)}')">Collapse ▴</button>
+              </div>
+              <div class="sb-group-table-wrap">
+                <table class="sb-group-table">
+                  <tbody>
+                    ${rowsHtml}
+                  </tbody>
+                </table>
+              </div>
+              <div class="sb-group-footer">
+                <span style="color:#888; font-size:0.78rem;">Player picks are hidden until tip-off to prevent copying</span>
+                <a href="/College-Basketball-Stats/groups#${escapeHtml(activeGroup.id)}">Group Standings &rarr;</a>
+              </div>
+            </div>
+          `;
+      }
+
+      // --- POST-LOCK / LIVE / FINAL ---
+      const memberRows = members.map(uid => {
+          const profile = userProfilesCache[uid] || {};
+          const isYou = uid === USER_UID;
+          const name = profile.displayName || (isYou ? 'You' : `Member ${uid.substring(0, 5)}`);
+          const initials = (name || '?').substring(0, 2).toUpperCase();
+          const pickedId = currentGamePicks[uid];
+          const pickTime = currentGamePicks[uid + '_time'] || 0;
+          const hasPick = Boolean(pickedId);
+          const pData = hasPick ? playerValMap[String(pickedId)] : null;
+          const val = pData ? pData.val : 0;
+          const playerName = pData ? (pData.name || pData.displayName) : (hasPick ? `Player #${pickedId}` : 'No Pick');
+          return { uid, name, initials, isYou, hasPick, pickedId, val, playerName, pickTime };
+      });
+
+      memberRows.sort((a, b) => {
+          if (a.hasPick && !b.hasPick) return -1;
+          if (!a.hasPick && b.hasPick) return 1;
+          if (b.val !== a.val) return b.val - a.val;
+          return a.pickTime - b.pickTime;
+      });
+
+      memberRows.forEach((m, idx) => {
+          if (!m.hasPick) {
+              m.rank = '-';
+              m.rankBadge = '<span class="rank-badge rank-none">-</span>';
+          } else if (idx > 0 && m.val === memberRows[idx - 1].val && memberRows[idx - 1].hasPick) {
+              m.rank = memberRows[idx - 1].rank;
+              m.rankBadge = memberRows[idx - 1].rankBadge;
+          } else {
+              m.rank = idx + 1;
+              if (m.rank === 1) m.rankBadge = '<span class="rank-badge rank-1">🥇</span>';
+              else if (m.rank === 2) m.rankBadge = '<span class="rank-badge rank-2">🥈</span>';
+              else if (m.rank === 3) m.rankBadge = '<span class="rank-badge rank-3">🥉</span>';
+              else m.rankBadge = `<span class="rank-badge rank-sub">#${m.rank}</span>`;
+          }
+      });
+
+      // Collapsed summary preview
+      const topLeader = memberRows[0];
+      const secondLeader = memberRows[1];
+      const userMember = memberRows.find(m => m.isYou);
+      let summaryPreview = '';
+      if (topLeader && topLeader.hasPick) {
+          summaryPreview = `🥇 ${escapeHtml(topLeader.name)} (${topLeader.val >= 0 ? '+' : ''}${topLeader.val} VAL)`;
+          if (secondLeader && secondLeader.hasPick) {
+              summaryPreview += ` · 🥈 ${escapeHtml(secondLeader.name)} (${secondLeader.val >= 0 ? '+' : ''}${secondLeader.val} VAL)`;
+          }
+          if (userMember && userMember.rank > 2) {
+              summaryPreview += ` · You: #${userMember.rank} (${userMember.val >= 0 ? '+' : ''}${userMember.val} VAL)`;
+          }
+      } else {
+          summaryPreview = `${members.length} Members`;
+      }
+
+      if (isCollapsed) {
+          return `
+            <div class="scoreboard-group-widget" id="sb-group-widget">
+              ${pillsHtml}
+              <div class="sb-group-collapsed-bar" onclick="toggleScoreboardGroupCollapse('${escapeHtml(activeGroup.id)}')">
+                <div class="sb-group-collapsed-left">
+                  <span class="sb-group-collapsed-icon">🏆</span>
+                  <span class="sb-group-collapsed-title">${escapeHtml(activeGroup.name)}</span>
+                  <span class="sb-group-collapsed-preview">${summaryPreview}</span>
+                </div>
+                <button type="button" class="sb-group-toggle-btn" aria-label="Expand">Expand ▾</button>
+              </div>
+            </div>
+          `;
+      }
+
+      const isLive = state === 'in';
+      const isFinal = state === 'post';
+      const statusBadgeHtml = isLive 
+          ? '<span class="sb-group-status-pill sb-status-live"><span class="live-pulse"></span> LIVE LEADERBOARD</span>'
+          : (isFinal ? '<span class="sb-group-status-pill sb-status-final">FINAL LEADERBOARD</span>' : '<span class="sb-group-status-pill sb-status-pre">PICKS LOCKED</span>');
+
+      const rowsHtml = memberRows.map(m => `
+        <tr class="sb-group-row ${m.isYou ? 'sb-is-you' : ''}">
+          <td class="sb-group-cell-rank">
+            ${m.rankBadge}
+          </td>
+          <td class="sb-group-cell-member">
+            <div class="sb-group-member-info">
+              <span class="sb-group-avatar">${escapeHtml(m.initials)}</span>
+              <span class="sb-group-member-name">${escapeHtml(m.name)}${m.isYou ? ' <span class="user-you-tag">You</span>' : ''}</span>
+            </div>
+          </td>
+          <td class="sb-group-cell-pick">
+            ${m.hasPick 
+                ? `<span class="sb-pick-name">${escapeHtml(m.playerName)}</span>`
+                : `<span class="sb-pick-name sb-no-pick">No Pick</span>`}
+          </td>
+          <td class="sb-group-cell-val">
+            ${m.hasPick
+                ? `<span class="sb-val-pill ${m.val >= 0 ? 'val-pos' : 'val-neg'}">${m.val >= 0 ? '+' : ''}${m.val} VAL</span>`
+                : `<span class="sb-val-pill val-neutral">-</span>`}
+          </td>
+        </tr>
+      `).join('');
+
+      return `
+        <div class="scoreboard-group-widget" id="sb-group-widget">
+          ${pillsHtml}
+          <div class="sb-group-header">
+            <div class="sb-group-header-left">
+              <div class="sb-group-title">
+                🏆 ${escapeHtml(activeGroup.name)}
+              </div>
+              ${statusBadgeHtml}
+            </div>
+            <button type="button" class="sb-group-toggle-btn" onclick="toggleScoreboardGroupCollapse('${escapeHtml(activeGroup.id)}')">Collapse ▴</button>
+          </div>
+          <div class="sb-group-table-wrap">
+            <table class="sb-group-table">
+              <tbody>
+                ${rowsHtml}
+              </tbody>
+            </table>
+          </div>
+          <div class="sb-group-footer">
+            <span style="color:#888; font-size:0.78rem;">Live efficiency VAL scores recalculate during play</span>
+            <a href="/College-Basketball-Stats/groups#${escapeHtml(activeGroup.id)}">Season Standings &rarr;</a>
+          </div>
         </div>
       `;
   }
@@ -482,6 +1021,9 @@ permalink: /scoreboard/
       ${linescoreHtml}
       ${lastPlayHtml}
       ${nextGameHtml}
+      <div id="scoreboard-group-container">
+        ${renderScoreboardGroupWidget(event, summaryData, rosterData, type, state, gameDate)}
+      </div>
       <div id="stats-content">
         ${(summaryData && summaryData.boxscore && renderPlayerStats(summaryData, pickedPlayerId)) || renderTeamStats(selectedTeam, opponent, rosterData, pickedPlayerId, event.id, state, gameDate)}
       </div>
@@ -529,7 +1071,7 @@ permalink: /scoreboard/
 
             <div class="pick-box">
                 <h3 style="margin: 0 0 8px 0;">Make Your Pick</h3>
-                <p style="margin: 0 0 12px 0; color: #666; font-size: 0.9rem;">Select the player you predict will achieve the highest VAL score in this game:</p>
+                <p style="margin: 0 0 12px 0; color: #666; font-size: 0.9rem;">Select the player you predict will achieve the highest VAL score in this game: <a href="javascript:void(0)" onclick="showValFormulaModal(event)" class="val-inline-link">What is VAL?</a></p>
                 <div class="pick-controls-wrapper">
                     <select id="player-pick-select" class="pick-select">
                         <option value="">-- Select Player --</option>
@@ -667,7 +1209,7 @@ permalink: /scoreboard/
         <div id="team-stats-${index}" style="display: ${displayStyle};">
           <div class="stats-table-wrapper">
             <table class="stats-table">
-              <thead><tr><th class="col-val">VAL</th><th class="col-player" style="text-align:left;">Player</th>${targetStats.map(s => `<th>${s}</th>`).join('')}</tr></thead>
+              <thead><tr><th class="col-val" onclick="showValFormulaModal(event)" style="cursor:pointer;" title="VAL (Value Rating) — Click to view formula">VAL <span class="val-header-badge" aria-label="Formula Info">ℹ️</span></th><th class="col-player" style="text-align:left;">Player</th>${targetStats.map(s => `<th>${s}</th>`).join('')}</tr></thead>
               <tbody>${rows}</tbody>
             </table>
           </div>
@@ -681,7 +1223,7 @@ permalink: /scoreboard/
       return `<button class="${activeClass}" data-team-index="${index}">${teamName}</button>`;
     }).join('');
 
-    return `<div class="controls" style="margin-top: 10px; margin-bottom: 10px;"><div class="btn-group">${toggleButtons}</div></div>` + teamHtmls.join('');
+    return `<div class="controls boxscore-controls" style="margin-top: 10px; margin-bottom: 10px;"><div class="btn-group">${toggleButtons}</div><button type="button" class="val-formula-pill-btn" onclick="showValFormulaModal(event)" title="VAL Formula explanation">ℹ️ VAL Formula</button></div>` + teamHtmls.join('');
   }
 
   // Event delegation on game-display
