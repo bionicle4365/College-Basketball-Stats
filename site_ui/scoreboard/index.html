@@ -8,9 +8,11 @@ permalink: /scoreboard/
   <div id="game-display" class="game-card">
     <div class="loading">Loading stats...</div>
   </div>
+  {% if jekyll.environment == "development" %}
   <div id="mock-preview-footer" class="mock-preview-bar" style="display:none;">
     <span>Want to see what this page looks like during a live game?</span> <a href="?mock=live" class="mock-preview-link">▶ Preview Live Game State</a>
   </div>
+  {% endif %}
   <!-- Player VAL Breakdown Modal -->
   <div id="val-modal" class="modal-overlay" onclick="closeValModal(event)">
     <div class="modal-box">
@@ -643,7 +645,9 @@ permalink: /scoreboard/
         return;
     } else {
         if (mockBanner) mockBanner.innerHTML = '';
-        if (mockFooter) mockFooter.style.display = 'block';
+        if (mockFooter && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+            mockFooter.style.display = 'block';
+        }
     }
 
     const urlParams = new URLSearchParams(window.location.search);
