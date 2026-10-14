@@ -25,7 +25,8 @@ permalink: /schedule/
                 const athletes = rosterData?.athletes || rosterData?.team?.athletes || [];
                 athletes.forEach(p => playerMap[p.id] = p.shortName || p.displayName);
 
-                const events = data?.events || [];
+                const events = (data?.events || []).slice();
+                events.sort((a, b) => new Date(a.date || a.competitions?.[0]?.date) - new Date(b.date || b.competitions?.[0]?.date));
                 allScheduleEvents = events;
                 const teamDisplayName = escapeHtml(data?.team?.displayName || rosterData?.team?.displayName || 'Team');
                 document.getElementById('team-name').textContent = `${teamDisplayName} Schedule`;
@@ -145,9 +146,10 @@ permalink: /schedule/
         }
 
         function loadGameDetailsAndPicks(events) {
-            events.forEach(event => {
+            const userPicksByGame = {};
+            const promises = events.map(event => {
                 const game = event.competitions?.[0];
-                if (!game) return;
+                if (!game) return Promise.resolve();
                 
                 const summaryPromise = (game.status?.type?.state === 'post') 
                     ? fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${encodeURIComponent(SPORT_PATH)}/summary?event=${encodeURIComponent(game.id)}`).then(r => r.json()).catch(() => null)
@@ -156,7 +158,7 @@ permalink: /schedule/
                     ? db.collection(COLLECTION_NAME).doc(String(event.id)).get().catch(() => null)
                     : Promise.resolve(null);
 
-                Promise.all([summaryPromise, pickPromise]).then(([summary, pickDoc]) => {
+                return Promise.all([summaryPromise, pickPromise]).then(([summary, pickDoc]) => {
                     if (summary && summary.boxscore && summary.boxscore.players) {
                         const teamStats = summary.boxscore.players.find(p => String(p.team?.id) === String(TEAM_ID));
                         if (teamStats && teamStats.statistics && teamStats.statistics[0]) {
@@ -194,6 +196,7 @@ permalink: /schedule/
                             if (pickDoc && pickDoc.exists) {
                                 const pickedPlayerId = pickDoc.data()[USER_UID];
                                 if (pickedPlayerId) {
+                                    userPicksByGame[String(event.id)] = String(pickedPlayerId);
                                     const player = athletes.find(p => p.athlete && String(p.athlete.id) === String(pickedPlayerId));
                                     if (player) {
                                         const val = calculateVal(player.stats, labels);
@@ -227,6 +230,7 @@ permalink: /schedule/
                     if (pickDoc && pickDoc.exists) {
                         const pickedPlayerId = pickDoc.data()[USER_UID];
                         if (pickedPlayerId) {
+                            userPicksByGame[String(event.id)] = String(pickedPlayerId);
                             const pickCell = document.getElementById(`pick-${game.id}`);
                             const pickCardCell = document.getElementById(`pick-card-${game.id}`);
                             if (pickCell && (pickCell.textContent === '-' || pickCell.textContent === '')) {
@@ -267,6 +271,41 @@ permalink: /schedule/
                     console.warn(`Error processing game ${game.id}:`, err);
                 });
             });
+
+            Promise.all(promises).then(() => {
+                checkScheduleCooldownConflicts(events, userPicksByGame);
+            });
+        }
+
+        function checkScheduleCooldownConflicts(events, userPicksByGame) {
+            for (let i = 0; i < events.length - 1; i++) {
+                const e1 = events[i];
+                const e2 = events[i + 1];
+                const p1 = userPicksByGame[String(e1.id)];
+                const p2 = userPicksByGame[String(e2.id)];
+                if (p1 && p2 && p1 === p2) {
+                    const g1State = e1.competitions?.[0]?.status?.type?.state;
+                    const g2State = e2.competitions?.[0]?.status?.type?.state;
+                    if (g1State === 'pre') {
+                        flagCooldownConflict(e1.id);
+                    }
+                    if (g2State === 'pre') {
+                        flagCooldownConflict(e2.id);
+                    }
+                }
+            }
+        }
+
+        function flagCooldownConflict(gameId) {
+            const pickCell = document.getElementById(`pick-${gameId}`);
+            const pickCardCell = document.getElementById(`pick-card-${gameId}`);
+            const conflictBadge = `<span class="badge-cooldown-conflict" title="Cooldown conflict: Same player picked 2 games in a row. Click to change.">⚠️ Cooldown Conflict</span>`;
+            if (pickCell && !pickCell.innerHTML.includes('badge-cooldown-conflict')) {
+                pickCell.innerHTML += ` ${conflictBadge}`;
+            }
+            if (pickCardCell && !pickCardCell.innerHTML.includes('badge-cooldown-conflict')) {
+                pickCardCell.innerHTML += ` ${conflictBadge}`;
+            }
         }
 
         loadScheduleData();

@@ -1434,6 +1434,107 @@ body.dark-mode .countdown-subtext {
     box-shadow: 0 1px 3px rgba(46, 125, 50, 0.3);
 }
 
+.badge-cooldown-conflict {
+    background: #e65100;
+    color: white;
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 10px;
+    display: inline-block;
+    letter-spacing: 0.3px;
+    box-shadow: 0 1px 3px rgba(230, 81, 0, 0.3);
+    margin-left: 4px;
+    vertical-align: middle;
+}
+
+/* Pick Cooldown Styles */
+.cooldown-info-bar {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    background: #f0f4f8;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    padding: 8px 12px;
+    margin-bottom: 12px;
+    font-size: 0.85rem;
+    color: #333;
+    text-align: left;
+}
+body.dark-mode .cooldown-info-bar {
+    background: #21262d;
+    border-color: #30363d;
+    color: #c9d1d9;
+}
+.cooldown-info-icon {
+    font-size: 1.15rem;
+    flex-shrink: 0;
+    margin-top: -1px;
+}
+.cooldown-info-text {
+    flex: 1;
+    line-height: 1.4;
+}
+.cooldown-tags {
+    display: inline-flex;
+    gap: 6px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+}
+.cooldown-tag {
+    background: #ffebee;
+    color: #c62828;
+    border: 1px solid #ffcdd2;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+body.dark-mode .cooldown-tag {
+    background: #3e1b1b;
+    color: #ff8a80;
+    border-color: #5c2424;
+}
+
+.cooldown-conflict-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    background: #fff8e1;
+    border: 1px solid #ffe082;
+    border-left: 4px solid #ff8f00;
+    border-radius: 6px;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+    text-align: left;
+    color: #5d4037;
+}
+body.dark-mode .cooldown-conflict-card {
+    background: #2a2215;
+    border-color: #4a3b1a;
+    border-left-color: #ffa000;
+    color: #ffe082;
+}
+.cooldown-card-icon {
+    font-size: 1.3rem;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+.cooldown-card-body p {
+    margin: 4px 0 0 0;
+    font-size: 0.85rem;
+    line-height: 1.4;
+}
+.option-cooldown {
+    color: #888 !important;
+    background: #f7f7f7;
+}
+body.dark-mode .option-cooldown {
+    color: #777 !important;
+    background: #252525;
+}
+
 /* ==========================================================================
    Scoreboard Live Group Leaderboard Widget (Option A)
    ========================================================================== */

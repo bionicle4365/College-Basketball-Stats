@@ -62,7 +62,7 @@ async function verifyPassword(enteredPassword, salt, storedHash) {
 }
 
 function checkAuth() {
-    const isMock = new URLSearchParams(window.location.search).get('mock') === 'live' || new URLSearchParams(window.location.search).get('demo') === 'live';
+    const isMock = Boolean(new URLSearchParams(window.location.search).get('mock') || new URLSearchParams(window.location.search).get('demo'));
     if (isMock) return;
     if (localStorage.getItem('isLoggedIn') !== 'true') {
         window.location.href = '/College-Basketball-Stats/login';

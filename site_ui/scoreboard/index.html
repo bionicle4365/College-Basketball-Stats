@@ -10,7 +10,9 @@ permalink: /scoreboard/
   </div>
   {% if jekyll.environment == "development" %}
   <div id="mock-preview-footer" class="mock-preview-bar" style="display:none;">
-    <span>Want to see what this page looks like during a live game?</span> <a href="?mock=live" class="mock-preview-link">▶ Preview Live Game State</a>
+    <span>Want to preview scoreboard states?</span> 
+    <a href="?mock=live" class="mock-preview-link">▶ Preview Live Game State</a>
+    <a href="?mock=pre" class="mock-preview-link" style="margin-left: 10px;">▶ Preview Pre-Game & Cooldown</a>
   </div>
   {% endif %}
   <!-- Player VAL Breakdown Modal -->
@@ -102,8 +104,10 @@ permalink: /scoreboard/
 <script>
   checkAuth();
   const isMockLive = new URLSearchParams(window.location.search).get('mock') === 'live' || new URLSearchParams(window.location.search).get('demo') === 'live';
+  const isMockPre = new URLSearchParams(window.location.search).get('mock') === 'pre' || new URLSearchParams(window.location.search).get('demo') === 'pre';
+  const isMock = isMockLive || isMockPre;
   const TEAM_ID = getFavoriteTeamId();
-  let USER_UID = isMockLive ? 'mock-user-123' : null;
+  let USER_UID = isMock ? 'mock-user-123' : null;
 
   const ENDPOINTS = {
     mens: 'https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard',
@@ -158,7 +162,128 @@ permalink: /scoreboard/
   let activeGroupId = null;
   let userProfilesCache = {};
   let currentRosterCache = null;
+  let cachedTeamScheduleData = null;
+  let currentCooldownInfo = { prev: null, next: null };
   let lastRenderParams = null;
+
+  async function getCachedTeamSchedule(sportPath, teamId) {
+      if (cachedTeamScheduleData && cachedTeamScheduleData.teamId === teamId && cachedTeamScheduleData.sportPath === sportPath) {
+          return cachedTeamScheduleData.events;
+      }
+      const data = await fetchTeamSchedule(sportPath, teamId);
+      let events = (data && data.events) ? [...data.events] : [];
+      events.sort((a, b) => new Date(a.date || a.competitions?.[0]?.date) - new Date(b.date || b.competitions?.[0]?.date));
+      cachedTeamScheduleData = { teamId, sportPath, events };
+      return events;
+  }
+
+  function formatScheduleGameLabel(event, myTeamId) {
+      if (!event) return '';
+      const comp = event.competitions?.[0];
+      const myComp = comp?.competitors?.find(c => String(c.team?.id) === String(myTeamId));
+      const oppComp = comp?.competitors?.find(c => String(c.team?.id) !== String(myTeamId));
+      const isHome = myComp?.homeAway === 'home';
+      const vsAt = isHome ? 'vs' : '@';
+      const oppName = oppComp?.team?.shortDisplayName || oppComp?.team?.displayName || oppComp?.team?.abbreviation || 'Opponent';
+      const dateVal = event.date || comp?.date;
+      const dateStr = dateVal ? new Date(dateVal).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' }) : '';
+      return `${vsAt} ${oppName}${dateStr ? ' on ' + dateStr : ''}`;
+  }
+
+  function resolvePlayerDisplayName(playerId, rosterData) {
+      if (!playerId) return '';
+      const athletes = rosterData?.athletes || rosterData?.team?.athletes || [];
+      const athlete = athletes.find(a => String(a.id) === String(playerId));
+      return athlete ? (athlete.displayName || athlete.shortName) : `Player #${playerId}`;
+  }
+
+  function updateCooldownPlayerNames(cooldownInfo, rosterData) {
+      if (!cooldownInfo || !rosterData) return;
+      if (cooldownInfo.prev && cooldownInfo.prev.playerId) {
+          cooldownInfo.prev.playerName = resolvePlayerDisplayName(cooldownInfo.prev.playerId, rosterData);
+      }
+      if (cooldownInfo.next && cooldownInfo.next.playerId) {
+          cooldownInfo.next.playerName = resolvePlayerDisplayName(cooldownInfo.next.playerId, rosterData);
+      }
+  }
+
+  async function loadCooldownInfo(gameId, type, rosterData) {
+      if (!gameId || !USER_UID || typeof db === 'undefined' || !db) {
+          currentCooldownInfo = { prev: null, next: null };
+          return currentCooldownInfo;
+      }
+
+      try {
+          const sportPath = getSportPath(type);
+          const events = await getCachedTeamSchedule(sportPath, TEAM_ID);
+          if (!events || events.length === 0) {
+              currentCooldownInfo = { prev: null, next: null };
+              return currentCooldownInfo;
+          }
+
+          const targetId = String(gameId);
+          const idx = events.findIndex(e => String(e.id) === targetId || String(e.competitions?.[0]?.id) === targetId);
+
+          if (idx === -1) {
+              currentCooldownInfo = { prev: null, next: null };
+              return currentCooldownInfo;
+          }
+
+          const prevEvent = idx > 0 ? events[idx - 1] : null;
+          const nextEvent = idx < events.length - 1 ? events[idx + 1] : null;
+
+          const collectionName = getCollectionName(TEAM_ID, type);
+          let prevPickId = null;
+          let nextPickId = null;
+
+          const promises = [];
+          if (prevEvent) {
+              promises.push(
+                  db.collection(collectionName).doc(String(prevEvent.id)).get()
+                      .then(doc => {
+                          if (doc.exists && doc.data() && doc.data()[USER_UID]) {
+                              prevPickId = String(doc.data()[USER_UID]);
+                          }
+                      })
+                      .catch(err => console.warn('Error fetching prev game pick for cooldown:', err))
+              );
+          }
+          if (nextEvent) {
+              promises.push(
+                  db.collection(collectionName).doc(String(nextEvent.id)).get()
+                      .then(doc => {
+                          if (doc.exists && doc.data() && doc.data()[USER_UID]) {
+                              nextPickId = String(doc.data()[USER_UID]);
+                          }
+                      })
+                      .catch(err => console.warn('Error fetching next game pick for cooldown:', err))
+              );
+          }
+
+          await Promise.all(promises);
+
+          currentCooldownInfo = {
+              prev: prevPickId ? {
+                  gameId: String(prevEvent.id),
+                  label: formatScheduleGameLabel(prevEvent, TEAM_ID),
+                  playerId: prevPickId,
+                  playerName: resolvePlayerDisplayName(prevPickId, rosterData)
+              } : null,
+              next: nextPickId ? {
+                  gameId: String(nextEvent.id),
+                  label: formatScheduleGameLabel(nextEvent, TEAM_ID),
+                  playerId: nextPickId,
+                  playerName: resolvePlayerDisplayName(nextPickId, rosterData)
+              } : null
+          };
+
+          return currentCooldownInfo;
+      } catch (err) {
+          console.warn('Error loading cooldown info:', err);
+          currentCooldownInfo = { prev: null, next: null };
+          return currentCooldownInfo;
+      }
+  }
 
   async function getCachedRoster(type, teamId) {
       if (currentRosterCache && currentRosterCache.teamId === teamId && currentRosterCache.type === type) {
@@ -282,6 +407,38 @@ permalink: /scoreboard/
               return;
           }
       }
+
+      // Cooldown validation: Cannot pick the same player 2 games in a row
+      if (currentCooldownInfo) {
+          const isPrev = currentCooldownInfo.prev && String(currentCooldownInfo.prev.playerId) === String(playerId);
+          const isNext = currentCooldownInfo.next && String(currentCooldownInfo.next.playerId) === String(playerId);
+          if (isPrev || isNext) {
+              let reason = '';
+              if (isPrev && isNext) {
+                  reason = `in both your previous (${currentCooldownInfo.prev.label}) and next game (${currentCooldownInfo.next.label})`;
+              } else if (isPrev) {
+                  reason = `in your previous game (${currentCooldownInfo.prev.label})`;
+              } else {
+                  reason = `in your next game (${currentCooldownInfo.next.label})`;
+              }
+              const pName = (isPrev ? currentCooldownInfo.prev.playerName : currentCooldownInfo.next.playerName) || 'This player';
+              if (message) {
+                  message.innerHTML = `<span style="color: #c62828;">❌ <strong>Cooldown Restriction:</strong> ${escapeHtml(pName)} cannot be picked because you selected them ${escapeHtml(reason)}. You cannot pick the same player 2 games in a row.</span>`;
+              }
+              return;
+          }
+      }
+
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('mock') || urlParams.get('demo')) {
+          if (message) {
+              message.textContent = "✓ (Demo) Pick saved! You can change this anytime before tip-off.";
+              message.style.color = "#2e7d32";
+          }
+          const conflictCard = document.querySelector('.cooldown-conflict-card');
+          if (conflictCard) conflictCard.style.display = 'none';
+          return;
+      }
       
       const league = getLeague();
       const collectionName = getCollectionName(TEAM_ID, league);
@@ -297,6 +454,9 @@ permalink: /scoreboard/
           if (banner) banner.style.display = 'none';
           sessionStorage.setItem('dismissed_banner_' + gameId, 'true');
           
+          const conflictCard = document.querySelector('.cooldown-conflict-card');
+          if (conflictCard) conflictCard.style.display = 'none';
+
           // Instant local update for group widget
           currentGamePicks[USER_UID] = playerId;
           currentGamePicks[`${USER_UID}_time`] = Date.now();
@@ -592,6 +752,84 @@ permalink: /scoreboard/
       return { mockEvent, mockSummary, mockRoster };
   }
 
+  function getMockPreGameData() {
+      const mockEvent = {
+          id: '401638645',
+          date: new Date(Date.now() + 4 * 3600 * 1000).toISOString(),
+          status: {
+              type: {
+                  state: 'pre',
+                  completed: false,
+                  description: 'Scheduled',
+                  detail: 'Tonight - 7:00 PM EST',
+                  shortDetail: '7:00 PM'
+              }
+          },
+          competitions: [{
+              id: '401638645',
+              date: new Date(Date.now() + 4 * 3600 * 1000).toISOString(),
+              status: {
+                  type: {
+                      state: 'pre',
+                      completed: false,
+                      description: 'Scheduled',
+                      detail: 'Tonight - 7:00 PM EST',
+                      shortDetail: '7:00 PM'
+                  }
+              },
+              competitors: [
+                  {
+                      id: '153',
+                      homeAway: 'away',
+                      score: '0',
+                      records: [{ type: 'total', summary: '19-6' }, { type: 'vsconf', summary: '11-3' }],
+                      curatedRank: { current: 9 },
+                      team: {
+                          id: '153',
+                          displayName: 'North Carolina Tar Heels',
+                          shortDisplayName: 'North Carolina',
+                          abbreviation: 'UNC',
+                          nickname: 'Tar Heels',
+                          logos: [{ href: 'https://a.espncdn.com/i/teamlogos/ncaa/500/153.png' }]
+                      }
+                  },
+                  {
+                      id: '152',
+                      homeAway: 'home',
+                      score: '0',
+                      records: [{ type: 'total', summary: '17-8' }, { type: 'vsconf', summary: '9-5' }],
+                      curatedRank: { current: 22 },
+                      team: {
+                          id: '152',
+                          displayName: 'NC State Wolfpack',
+                          shortDisplayName: 'NC State',
+                          abbreviation: 'NCST',
+                          nickname: 'Wolfpack',
+                          logos: [{ href: 'https://a.espncdn.com/i/teamlogos/ncaa/500/152.png' }]
+                      }
+                  }
+              ]
+          }]
+      };
+
+      const mockRoster = {
+          team: {
+              displayName: 'NC State Wolfpack',
+              athletes: [
+                  { id: '4432123', displayName: 'DJ Burns Jr.', shortName: 'D. Burns Jr.', active: true },
+                  { id: '4432124', displayName: 'DJ Horne', shortName: 'D. Horne', active: true },
+                  { id: '4432125', displayName: 'Jayden Taylor', shortName: 'J. Taylor', active: true },
+                  { id: '4432126', displayName: 'Mohamed Diarra', shortName: 'M. Diarra', active: true },
+                  { id: '4432127', displayName: 'Michael O\'Connell', shortName: 'M. O\'Connell', active: true },
+                  { id: '4432128', displayName: 'Casey Morsell', shortName: 'C. Morsell', active: true },
+                  { id: '4432129', displayName: 'Ben Middlebrooks', shortName: 'B. Middlebrooks', active: true }
+              ]
+          }
+      };
+
+      return { mockEvent, mockRoster };
+  }
+
   function loadStats(type, isSilent = false) {
     localStorage.setItem('league', type);
     
@@ -603,7 +841,53 @@ permalink: /scoreboard/
     const mockBanner = document.getElementById('mock-banner-container');
     const mockFooter = document.getElementById('mock-preview-footer');
 
-    if (isMockLive) {
+    if (isMockPre) {
+        if (mockBanner) {
+            mockBanner.innerHTML = `
+              <div class="mock-demo-banner" style="background:#1b5e20;">
+                <span>⚡ <strong>Pre-Game Pick & Cooldown Simulation:</strong> Notice DJ Burns Jr. (previous game) & DJ Horne (next game) locked on cooldown!</span>
+                <a href="${window.location.pathname}" class="mock-demo-banner-exit">✕ Exit Demo</a>
+              </div>`;
+        }
+        if (mockFooter) mockFooter.style.display = 'none';
+
+        stopLivePolling();
+        USER_UID = 'mock-user-123';
+        const { mockEvent, mockRoster } = getMockPreGameData();
+        userGroups = [{
+            id: 'mock-group-1',
+            name: "Wolfpack Pick'em Crew",
+            members: ['mock-user-123', 'mock-user-2', 'mock-user-3', 'mock-user-4', 'mock-user-5']
+        }];
+        activeGroupId = 'mock-group-1';
+        userProfilesCache = {
+            'mock-user-123': { displayName: 'Justin' },
+            'mock-user-2': { displayName: 'Marcus T.' },
+            'mock-user-3': { displayName: 'Sarah K.' },
+            'mock-user-4': { displayName: 'Dave R.' },
+            'mock-user-5': { displayName: 'Alex M.' }
+        };
+        currentGamePicks = {
+            'mock-user-2': '4432125',
+            'mock-user-3': '4432126'
+        };
+        currentCooldownInfo = {
+            prev: {
+                gameId: 'mock-prev-game',
+                label: 'vs Wake Forest on 11/4',
+                playerId: '4432123',
+                playerName: 'DJ Burns Jr.'
+            },
+            next: {
+                gameId: 'mock-next-game',
+                label: '@ Virginia on 11/12',
+                playerId: '4432124',
+                playerName: 'DJ Horne'
+            }
+        };
+        renderGame(mockEvent, null, null, null, mockRoster, type);
+        return;
+    } else if (isMockLive) {
         if (mockBanner) {
             mockBanner.innerHTML = `
               <div class="mock-demo-banner">
@@ -666,10 +950,14 @@ permalink: /scoreboard/
             const promises = [
                 fetchPick(gameId, type),
                 loadUserGroups(TEAM_ID, type),
-                getCachedRoster(type, TEAM_ID)
+                getCachedRoster(type, TEAM_ID),
+                loadCooldownInfo(gameId, type)
             ];
 
-            Promise.all(promises).then(([pickedPlayerId, _, rosterData]) => {
+            Promise.all(promises).then(([pickedPlayerId, _, rosterData, cooldownInfo]) => {
+                if (rosterData && cooldownInfo) {
+                    updateCooldownPlayerNames(cooldownInfo, rosterData);
+                }
                 if (summary && summary.header) {
                     renderGame(summary.header, summary, null, pickedPlayerId, rosterData, type);
                 } else {
@@ -713,8 +1001,12 @@ permalink: /scoreboard/
              return Promise.all([
                  fetchPick(game.id, type),
                  getCachedRoster(type, TEAM_ID),
-                 loadUserGroups(TEAM_ID, type)
-             ]).then(([pickedPlayerId, rosterData]) => {
+                 loadUserGroups(TEAM_ID, type),
+                 loadCooldownInfo(game.id, type)
+             ]).then(([pickedPlayerId, rosterData, _, cooldownInfo]) => {
+                 if (rosterData && cooldownInfo) {
+                     updateCooldownPlayerNames(cooldownInfo, rosterData);
+                 }
                  renderGame(game, null, null, pickedPlayerId, rosterData, type);
              });
           }
@@ -770,8 +1062,12 @@ permalink: /scoreboard/
                  return Promise.all([
                      fetchPick(targetGame.id, type),
                      getCachedRoster(type, TEAM_ID),
-                     loadUserGroups(TEAM_ID, type)
-                 ]).then(([pickedPlayerId, rosterData]) => {
+                     loadUserGroups(TEAM_ID, type),
+                     loadCooldownInfo(targetGame.id, type)
+                 ]).then(([pickedPlayerId, rosterData, _, cooldownInfo]) => {
+                     if (rosterData && cooldownInfo) {
+                         updateCooldownPlayerNames(cooldownInfo, rosterData);
+                     }
                      renderGame(targetGame, null, nextGame, pickedPlayerId, rosterData, type);
                  });
             } else {
@@ -1291,19 +1587,85 @@ permalink: /scoreboard/
     }
   }
 
-  function renderPlayerPicker(rosterData, pickedPlayerId, gameId, gameDate) {
+  function renderPlayerPicker(rosterData, pickedPlayerId, gameId, gameDate, cooldownInfo) {
+      const info = cooldownInfo || currentCooldownInfo || { prev: null, next: null };
       const athletesList = rosterData?.athletes || rosterData?.team?.athletes || [];
       const athletes = athletesList.filter(p => p.active !== false);
       athletes.sort((a, b) => a.displayName.localeCompare(b.displayName));
       
+      const isPickedPlayerConflicted = Boolean(
+          pickedPlayerId && (
+              (info.prev && String(info.prev.playerId) === String(pickedPlayerId)) ||
+              (info.next && String(info.next.playerId) === String(pickedPlayerId))
+          )
+      );
+
+      let conflictDetail = '';
+      if (isPickedPlayerConflicted) {
+          const isPrev = info.prev && String(info.prev.playerId) === String(pickedPlayerId);
+          const isNext = info.next && String(info.next.playerId) === String(pickedPlayerId);
+          if (isPrev && isNext) {
+              conflictDetail = `both your previous (${info.prev.label}) and next game (${info.next.label})`;
+          } else if (isPrev) {
+              conflictDetail = `your previous game (${info.prev.label})`;
+          } else {
+              conflictDetail = `your next game (${info.next.label})`;
+          }
+      }
+
       const options = athletes.map(p => {
-          const selected = String(p.id) === String(pickedPlayerId) ? 'selected' : '';
+          const pIdStr = String(p.id);
+          const isPrev = info.prev && String(info.prev.playerId) === pIdStr;
+          const isNext = info.next && String(info.next.playerId) === pIdStr;
+          const isCooldown = Boolean(isPrev || isNext);
+          const isSelected = pIdStr === String(pickedPlayerId);
+
+          if (isCooldown) {
+              let reason = '';
+              if (isPrev && isNext) {
+                  reason = `Picked in prev & next games`;
+              } else if (isPrev) {
+                  reason = `Picked in prev game: ${info.prev.label}`;
+              } else {
+                  reason = `Picked in next game: ${info.next.label}`;
+              }
+              const selectedAttr = isSelected ? 'selected' : '';
+              return `<option value="${escapeHtml(p.id)}" disabled ${selectedAttr} class="option-cooldown">🚫 ${escapeHtml(p.displayName)} (Cooldown: ${escapeHtml(reason)})</option>`;
+          }
+
+          const selected = isSelected ? 'selected' : '';
           return `<option value="${escapeHtml(p.id)}" ${selected}>${escapeHtml(p.displayName)}</option>`;
       }).join('');
       
       const safeGameDate = gameDate ? escapeHtml(gameDate) : '';
       const tipoffTimeStr = gameDate ? new Date(gameDate).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
       const tipoffDateStr = gameDate ? new Date(gameDate).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+
+      const hasCooldownTags = Boolean(info.prev || info.next);
+      const cooldownBarHtml = `
+        <div class="cooldown-info-bar">
+            <span class="cooldown-info-icon">⚡</span>
+            <div class="cooldown-info-text">
+                <strong>Cooldown Restriction:</strong> You cannot pick the same player 2 games in a row.
+                ${hasCooldownTags ? `
+                    <div class="cooldown-tags">
+                        ${info.prev ? `<span class="cooldown-tag" title="Picked in ${escapeHtml(info.prev.label)}">🔒 Prev: <s>${escapeHtml(info.prev.playerName)}</s></span>` : ''}
+                        ${info.next ? `<span class="cooldown-tag" title="Picked in ${escapeHtml(info.next.label)}">🔒 Next: <s>${escapeHtml(info.next.playerName)}</s></span>` : ''}
+                    </div>
+                ` : '<span style="color:#666; font-size:0.85em;"> (Adjacent games have no conflicting picks)</span>'}
+            </div>
+        </div>
+      `;
+
+      const conflictCardHtml = isPickedPlayerConflicted ? `
+        <div class="cooldown-conflict-card">
+            <span class="cooldown-card-icon">⚠️</span>
+            <div class="cooldown-card-body">
+                <strong>Cooldown Conflict:</strong>
+                <p>Your previously saved pick (<strong>${escapeHtml(athletes.find(a => String(a.id) === String(pickedPlayerId))?.displayName || 'Player')}</strong>) is on cooldown because you selected them in <em>${escapeHtml(conflictDetail)}</em>. You cannot pick the same player 2 games in a row. <strong>Please select a different player below.</strong></p>
+            </div>
+        </div>
+      ` : '';
 
       return `
         <div class="pick-container">
@@ -1319,6 +1681,10 @@ permalink: /scoreboard/
             <div class="pick-box">
                 <h3 style="margin: 0 0 8px 0;">Make Your Pick</h3>
                 <p style="margin: 0 0 12px 0; color: #666; font-size: 0.9rem;">Select the player you predict will achieve the highest VAL score in this game: <a href="javascript:void(0)" onclick="showValFormulaModal(event)" class="val-inline-link">What is VAL?</a></p>
+                
+                ${cooldownBarHtml}
+                ${conflictCardHtml}
+
                 <div class="pick-controls-wrapper">
                     <select id="player-pick-select" class="pick-select">
                         <option value="">-- Select Player --</option>
@@ -1327,7 +1693,7 @@ permalink: /scoreboard/
                     <button id="save-pick-btn" data-game-id="${escapeHtml(gameId)}" data-game-date="${safeGameDate}" class="btn btn-primary" style="padding: 10px 20px;">Save Pick</button>
                 </div>
                 <div id="pick-message" style="margin-top: 10px; min-height: 20px; font-weight: bold; font-size: 0.9rem;">
-                    ${pickedPlayerId ? `<span style="color: #2e7d32;">✓ Your pick is saved. You can change it anytime before tip-off.</span>` : ''}
+                    ${pickedPlayerId && !isPickedPlayerConflicted ? `<span style="color: #2e7d32;">✓ Your pick is saved. You can change it anytime before tip-off.</span>` : ''}
                 </div>
             </div>
         </div>
@@ -1338,7 +1704,7 @@ permalink: /scoreboard/
     // If no stats available (e.g. pre-game), return empty or basic record info
     if (state === 'pre' || !team1.statistics || team1.statistics.length === 0) {
       if (rosterData) {
-          return renderPlayerPicker(rosterData, pickedPlayerId, gameId, gameDate);
+          return renderPlayerPicker(rosterData, pickedPlayerId, gameId, gameDate, currentCooldownInfo);
       }
       return `<div class="leaders" style="text-align:center; margin-top:15px;">
         <p>Game has not started.</p>
@@ -1497,13 +1863,13 @@ permalink: /scoreboard/
   }
 
   // Instant load if already authenticated or in mock demo mode
-  if (localStorage.getItem('isLoggedIn') === 'true' || isMockLive) {
+  if (localStorage.getItem('isLoggedIn') === 'true' || isMock) {
       loadStats(localStorage.getItem('league') || 'mens');
   }
 
   if (typeof auth !== 'undefined' && auth) {
       auth.onAuthStateChanged(user => {
-          if (user && !isMockLive) {
+          if (user && !isMock) {
               USER_UID = user.uid;
               loadStats(localStorage.getItem('league') || 'mens', true);
           }
