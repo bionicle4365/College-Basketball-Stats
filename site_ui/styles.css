@@ -439,6 +439,17 @@ body.dark-mode .game-matrix-table td { border-color: #333; }
     }
 }
 
+/* Hide navigation when logged out */
+body.logged-out .mobile-bottom-nav,
+body.logged-out .nav-links,
+body.logged-out .mobile-menu-btn {
+    display: none !important;
+}
+
+body.logged-out #content {
+    padding-bottom: 20px !important;
+}
+
 /* 2. Sticky VAL & Player Columns in Box Score */
 .stats-table-wrapper {
     position: relative;

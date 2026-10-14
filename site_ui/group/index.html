@@ -68,9 +68,7 @@ permalink: /groups/
 
     <script>
         checkAuth();
-        const TEAM_ID = getFavoriteTeamId();
-        const LEAGUE = getLeague();
-        const SPORT_PATH = getSportPath();
+        const { teamId: TEAM_ID, league: LEAGUE, sportPath: SPORT_PATH } = getAppContext();
         let USER_UID = null;
         let currentGroupData = null;
         let groupMemberStats = {};
@@ -210,16 +208,25 @@ permalink: /groups/
         }
 
         function addToGroup(groupId) {
+            if (typeof db === 'undefined' || !db) return alert("Database is currently unavailable.");
             db.collection('groups').doc(groupId).update({
                 members: firebase.firestore.FieldValue.arrayUnion(USER_UID)
             }).then(() => {
                 window.location.hash = groupId;
+            }).catch(err => {
+                console.error("Error joining group:", err);
+                alert("Failed to join group. Please try again.");
             });
         }
 
         function loadGroups() {
             document.getElementById('groups-main-view').style.display = 'block';
             document.getElementById('single-group-view').style.display = 'none';
+            if (typeof db === 'undefined' || !db) {
+                document.getElementById('my-groups-list').innerHTML = '<p class="error">Firebase database is unavailable.</p>';
+                document.getElementById('available-groups-list').innerHTML = '<p class="error">Firebase database is unavailable.</p>';
+                return;
+            }
             db.collection('groups')
                 .where('teamId', '==', TEAM_ID)
                 .where('league', '==', LEAGUE)
@@ -240,6 +247,11 @@ permalink: /groups/
 
                     renderGroups('my-groups-list', myGroups, true);
                     renderGroups('available-groups-list', availableGroups, false);
+                })
+                .catch(err => {
+                    console.error("Error loading groups:", err);
+                    document.getElementById('my-groups-list').innerHTML = '<p class="error">Failed to load groups. Please try again.</p>';
+                    document.getElementById('available-groups-list').innerHTML = '<p class="error">Failed to load groups. Please try again.</p>';
                 });
         }
 
@@ -393,7 +405,7 @@ permalink: /groups/
 
                 // 2. Fetch completed schedule
                 const scheduleData = await fetchTeamSchedule(sportPath, teamId);
-                const completedEvents = (scheduleData.events || []).filter(e => e.competitions[0].status.type.state === 'post');
+                const completedEvents = (scheduleData.events || []).filter(e => e.competitions?.[0]?.status?.type?.state === 'post');
 
                 // Initialize member stats store
                 groupMemberStats = {};
@@ -753,9 +765,16 @@ permalink: /groups/
         }
 
         function closeMemberModal(event) {
-            if (event.target.id === 'member-picks-modal' || event.target.classList.contains('modal-close')) {
+            if (!event || event.target.id === 'member-picks-modal' || event.target.classList.contains('modal-close')) {
                 document.getElementById('member-picks-modal').style.display = 'none';
             }
         }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                const modal = document.getElementById('member-picks-modal');
+                if (modal) modal.style.display = 'none';
+            }
+        });
     </script>
 

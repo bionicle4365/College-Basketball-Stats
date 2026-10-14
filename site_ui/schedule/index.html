@@ -10,17 +10,12 @@ permalink: /schedule/
     <script>
         checkAuth();
 
-        const TEAM_ID = getFavoriteTeamId();
-        const LEAGUE = getLeague();
-        const SPORT_PATH = getSportPath();
-        const COLLECTION_NAME = getCollectionName(TEAM_ID, LEAGUE);
-        let USER_UID = null
+        const { teamId: TEAM_ID, league: LEAGUE, sportPath: SPORT_PATH, collectionName: COLLECTION_NAME } = getAppContext();
+        let USER_UID = (typeof auth !== 'undefined' && auth && auth.currentUser) ? auth.currentUser.uid : null;
         let playerMap = {};
+        let allScheduleEvents = [];
 
-        auth.onAuthStateChanged(user => {
-            if (user) {
-                USER_UID = user.uid;
-            }
+        function loadScheduleData() {
             // Fetch roster and schedule in parallel
             Promise.all([
                 fetchTeamRoster(SPORT_PATH, TEAM_ID).catch(() => null),
@@ -31,6 +26,7 @@ permalink: /schedule/
                 athletes.forEach(p => playerMap[p.id] = p.shortName || p.displayName);
 
                 const events = data?.events || [];
+                allScheduleEvents = events;
                 const teamDisplayName = escapeHtml(data?.team?.displayName || rosterData?.team?.displayName || 'Team');
                 document.getElementById('team-name').textContent = `${teamDisplayName} Schedule`;
                 
@@ -43,34 +39,42 @@ permalink: /schedule/
                 let cardItemsHtml = '';
                 
                 events.forEach(event => {
-                    const game = event.competitions[0];
+                    const game = event.competitions?.[0];
+                    if (!game) return;
                     const date = new Date(event.date);
                     const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
                     
-                    const myTeam = game.competitors.find(c => c.team.id === TEAM_ID);
+                    const myTeam = game.competitors?.find(c => String(c.team.id) === String(TEAM_ID));
                     if (!myTeam) return;
 
-                    const opponent = game.competitors.find(c => c.team.id !== TEAM_ID);
+                    const opponent = game.competitors?.find(c => String(c.team.id) !== String(TEAM_ID));
                     
                     const isHome = myTeam.homeAway === 'home';
                     const vsAt = isHome ? 'vs' : '@';
                     
-                    let result = escapeHtml(game.status.type.detail);
+                    let result = escapeHtml(game.status?.type?.detail || '');
                     
-                    if (game.status.type.state === 'post') {
+                    if (game.status?.type?.state === 'post') {
                         const isWin = myTeam.winner;
-                        const score = `${myTeam.score.displayValue}-${opponent.score.displayValue}`;
+                        const myScore = myTeam.score?.displayValue ?? myTeam.score ?? '';
+                        const oppScore = opponent?.score?.displayValue ?? opponent?.score ?? '';
+                        const score = (myScore && oppScore) ? `${myScore}-${oppScore}` : '';
                         let otInfo = '';
-                        if (game.status.type.shortDetail && game.status.type.shortDetail.includes('/')) {
+                        if (game.status?.type?.shortDetail && game.status.type.shortDetail.includes('/')) {
                             otInfo = ` <span style="font-size:0.85em; color:#666;">(${escapeHtml(game.status.type.shortDetail.split('/')[1])})</span>`;
                         }
                         result = `<span class="${isWin ? 'win' : 'loss'}">${isWin ? 'W' : 'L'}</span> ${score}${otInfo}`;
+                    } else if (game.status?.type?.state === 'in') {
+                        const myScore = myTeam.score?.displayValue ?? myTeam.score ?? '0';
+                        const oppScore = opponent?.score?.displayValue ?? opponent?.score ?? '0';
+                        const detail = escapeHtml(game.status?.type?.shortDetail || game.status?.type?.detail || 'LIVE');
+                        result = `<span class="badge-live" style="background:#cc0000; color:white; padding:2px 6px; border-radius:3px; font-size:0.75rem; font-weight:bold; margin-right:4px;">LIVE</span> ${myScore}-${oppScore} <span style="font-size:0.85em; color:#666;">(${detail})</span>`;
                     } else {
-                         result = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+                        result = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
                     }
 
-                    const logo = getTeamLogoHtml(opponent.team);
-                    const oppName = escapeHtml(opponent.team.shortDisplayName || opponent.team.displayName);
+                    const logo = opponent ? getTeamLogoHtml(opponent.team) : '';
+                    const oppName = escapeHtml(opponent?.team?.shortDisplayName || opponent?.team?.displayName || 'Opponent');
 
                     // Desktop Table Row
                     tableRowsHtml += `<tr class="schedule-game-row" data-game-id="${escapeHtml(game.id)}" style="cursor: pointer;">
@@ -131,130 +135,150 @@ permalink: /schedule/
                     }
                 });
 
-                // Fetch details for completed games to get Top Player
-                events.forEach(event => {
-                    const game = event.competitions[0];
-                    
-                    const summaryPromise = (game.status.type.state === 'post') 
-                        ? fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${encodeURIComponent(SPORT_PATH)}/summary?event=${encodeURIComponent(game.id)}`).then(r => r.json())
-                        : Promise.resolve(null);
-                    const pickPromise = (USER_UID && typeof db !== 'undefined') 
-                        ? db.collection(COLLECTION_NAME).doc(String(event.id)).get().catch(() => null)
-                        : Promise.resolve(null);
-
-                    Promise.all([summaryPromise, pickPromise]).then(([summary, pickDoc]) => {
-                            if (summary && summary.boxscore && summary.boxscore.players) {
-                                const teamStats = summary.boxscore.players.find(p => p.team.id === TEAM_ID);
-                                if (teamStats && teamStats.statistics && teamStats.statistics[0]) {
-                                    const statsData = teamStats.statistics[0];
-                                    const labels = statsData.names;
-                                    const athletes = statsData.athletes;
-                                    
-                                    let maxVal = -Infinity;
-                                    let topPlayer = null;
-                                    let topPlayerId = null;
-
-                                    athletes.forEach(player => {
-                                        const val = calculateVal(player.stats, labels);
-                                        if (val > maxVal) {
-                                            maxVal = val;
-                                            topPlayer = player.athlete ? (player.athlete.shortName || player.athlete.displayName) : player.displayName;
-                                            topPlayerId = player.athlete ? player.athlete.id : null;
-                                        }
-                                    });
-
-                                    if (topPlayer) {
-                                        const cell = document.getElementById(`val-${game.id}`);
-                                        const cardCell = document.getElementById(`val-card-${game.id}`);
-                                        const topPlayerStr = `<strong>${escapeHtml(topPlayer)}</strong> (${maxVal})`;
-                                        if (cell) {
-                                            cell.innerHTML = topPlayerStr;
-                                            cell.style.color = '';
-                                        }
-                                        if (cardCell) {
-                                            cardCell.innerHTML = topPlayerStr;
-                                        }
-                                    }
-
-                                    // Update Pick VAL if pick exists
-                                    if (pickDoc && pickDoc.exists) {
-                                        const pickedPlayerId = pickDoc.data()[USER_UID];
-                                        if (pickedPlayerId) {
-                                            const player = athletes.find(p => p.athlete && String(p.athlete.id) === String(pickedPlayerId));
-                                            if (player) {
-                                                const val = calculateVal(player.stats, labels);
-                                                const pickCell = document.getElementById(`pick-${game.id}`);
-                                                const pickCardCell = document.getElementById(`pick-card-${game.id}`);
-                                                const pickChip = document.getElementById(`pick-chip-${game.id}`);
-                                                const playerName = player.athlete ? (player.athlete.shortName || player.athlete.displayName) : (playerMap[pickedPlayerId] || 'Unknown');
-                                                const pickStr = `<strong>${escapeHtml(playerName)}</strong> (${val})`;
-
-                                                if (pickCell) {
-                                                    pickCell.innerHTML = pickStr;
-                                                    pickCell.style.color = '';
-                                                    if (topPlayerId && String(pickedPlayerId) === String(topPlayerId)) {
-                                                        pickCell.classList.add('correct-pick');
-                                                    }
-                                                }
-                                                if (pickCardCell) {
-                                                    pickCardCell.innerHTML = pickStr;
-                                                    if (topPlayerId && String(pickedPlayerId) === String(topPlayerId) && pickChip) {
-                                                        pickChip.classList.add('correct-pick');
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Handle Pick Name (if not already handled by VAL update or if game not complete)
-                            const isPreGame = game.status.type.state === 'pre' || !game.status.type.completed;
-                            if (pickDoc && pickDoc.exists) {
-                                const pickedPlayerId = pickDoc.data()[USER_UID];
-                                if (pickedPlayerId) {
-                                    const pickCell = document.getElementById(`pick-${game.id}`);
-                                    const pickCardCell = document.getElementById(`pick-card-${game.id}`);
-                                    if (pickCell && (pickCell.textContent === '-' || pickCell.textContent === '')) {
-                                        const playerName = playerMap[pickedPlayerId] || 'Unknown';
-                                        const valDisplay = (game.status.type.state === 'post') ? ' (0)' : '';
-                                        const pickNameStr = isPreGame 
-                                            ? `<span class="badge-pick-saved">✓ ${escapeHtml(playerName)}</span>`
-                                            : `<strong>${escapeHtml(playerName)}</strong>${valDisplay}`;
-                                        pickCell.innerHTML = pickNameStr;
-                                        pickCell.style.color = '';
-                                        if (pickCardCell) {
-                                            pickCardCell.innerHTML = pickNameStr;
-                                        }
-                                    }
-                                } else if (isPreGame) {
-                                    const pickCell = document.getElementById(`pick-${game.id}`);
-                                    const pickCardCell = document.getElementById(`pick-card-${game.id}`);
-                                    const neededHtml = `<span class="badge-pick-needed">Pick Needed &rarr;</span>`;
-                                    if (pickCell && (pickCell.textContent === '-' || pickCell.textContent === '')) {
-                                        pickCell.innerHTML = neededHtml;
-                                    }
-                                    if (pickCardCell && (pickCardCell.textContent === '-' || pickCardCell.textContent === '')) {
-                                        pickCardCell.innerHTML = neededHtml;
-                                    }
-                                }
-                            } else if (isPreGame) {
-                                const pickCell = document.getElementById(`pick-${game.id}`);
-                                const pickCardCell = document.getElementById(`pick-card-${game.id}`);
-                                const neededHtml = `<span class="badge-pick-needed">Pick Needed &rarr;</span>`;
-                                if (pickCell && (pickCell.textContent === '-' || pickCell.textContent === '')) {
-                                    pickCell.innerHTML = neededHtml;
-                                }
-                                if (pickCardCell && (pickCardCell.textContent === '-' || pickCardCell.textContent === '')) {
-                                    pickCardCell.innerHTML = neededHtml;
-                                }
-                            }
-                    });
-                });
+                // Fetch details for completed games and user picks
+                loadGameDetailsAndPicks(events);
             })
             .catch(err => {
                 console.error(err);
                 document.getElementById('schedule-content').innerHTML = '<div class="error">Failed to load data. Please try again later.</div>';
             });
-        });
+        }
+
+        function loadGameDetailsAndPicks(events) {
+            events.forEach(event => {
+                const game = event.competitions?.[0];
+                if (!game) return;
+                
+                const summaryPromise = (game.status?.type?.state === 'post') 
+                    ? fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${encodeURIComponent(SPORT_PATH)}/summary?event=${encodeURIComponent(game.id)}`).then(r => r.json()).catch(() => null)
+                    : Promise.resolve(null);
+                const pickPromise = (USER_UID && typeof db !== 'undefined' && db) 
+                    ? db.collection(COLLECTION_NAME).doc(String(event.id)).get().catch(() => null)
+                    : Promise.resolve(null);
+
+                Promise.all([summaryPromise, pickPromise]).then(([summary, pickDoc]) => {
+                    if (summary && summary.boxscore && summary.boxscore.players) {
+                        const teamStats = summary.boxscore.players.find(p => String(p.team?.id) === String(TEAM_ID));
+                        if (teamStats && teamStats.statistics && teamStats.statistics[0]) {
+                            const statsData = teamStats.statistics[0];
+                            const labels = statsData.names;
+                            const athletes = statsData.athletes;
+                            
+                            let maxVal = -Infinity;
+                            let topPlayer = null;
+                            let topPlayerId = null;
+
+                            athletes.forEach(player => {
+                                const val = calculateVal(player.stats, labels);
+                                if (val > maxVal) {
+                                    maxVal = val;
+                                    topPlayer = player.athlete ? (player.athlete.shortName || player.athlete.displayName) : player.displayName;
+                                    topPlayerId = player.athlete ? player.athlete.id : null;
+                                }
+                            });
+
+                            if (topPlayer) {
+                                const cell = document.getElementById(`val-${game.id}`);
+                                const cardCell = document.getElementById(`val-card-${game.id}`);
+                                const topPlayerStr = `<strong>${escapeHtml(topPlayer)}</strong> (${maxVal})`;
+                                if (cell) {
+                                    cell.innerHTML = topPlayerStr;
+                                    cell.style.color = '';
+                                }
+                                if (cardCell) {
+                                    cardCell.innerHTML = topPlayerStr;
+                                }
+                            }
+
+                            // Update Pick VAL if pick exists
+                            if (pickDoc && pickDoc.exists) {
+                                const pickedPlayerId = pickDoc.data()[USER_UID];
+                                if (pickedPlayerId) {
+                                    const player = athletes.find(p => p.athlete && String(p.athlete.id) === String(pickedPlayerId));
+                                    if (player) {
+                                        const val = calculateVal(player.stats, labels);
+                                        const pickCell = document.getElementById(`pick-${game.id}`);
+                                        const pickCardCell = document.getElementById(`pick-card-${game.id}`);
+                                        const pickChip = document.getElementById(`pick-chip-${game.id}`);
+                                        const playerName = player.athlete ? (player.athlete.shortName || player.athlete.displayName) : (playerMap[pickedPlayerId] || 'Unknown');
+                                        const pickStr = `<strong>${escapeHtml(playerName)}</strong> (${val})`;
+
+                                        if (pickCell) {
+                                            pickCell.innerHTML = pickStr;
+                                            pickCell.style.color = '';
+                                            if (topPlayerId && String(pickedPlayerId) === String(topPlayerId)) {
+                                                pickCell.classList.add('correct-pick');
+                                            }
+                                        }
+                                        if (pickCardCell) {
+                                            pickCardCell.innerHTML = pickStr;
+                                            if (topPlayerId && String(pickedPlayerId) === String(topPlayerId) && pickChip) {
+                                                pickChip.classList.add('correct-pick');
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Handle Pick Name (if not already handled by VAL update or if game not complete)
+                    const isPreGame = game.status?.type?.state === 'pre' || !game.status?.type?.completed;
+                    if (pickDoc && pickDoc.exists) {
+                        const pickedPlayerId = pickDoc.data()[USER_UID];
+                        if (pickedPlayerId) {
+                            const pickCell = document.getElementById(`pick-${game.id}`);
+                            const pickCardCell = document.getElementById(`pick-card-${game.id}`);
+                            if (pickCell && (pickCell.textContent === '-' || pickCell.textContent === '')) {
+                                const playerName = playerMap[pickedPlayerId] || 'Unknown';
+                                const valDisplay = (game.status?.type?.state === 'post') ? ' (0)' : '';
+                                const pickNameStr = isPreGame 
+                                    ? `<span class="badge-pick-saved">✓ ${escapeHtml(playerName)}</span>`
+                                    : `<strong>${escapeHtml(playerName)}</strong>${valDisplay}`;
+                                pickCell.innerHTML = pickNameStr;
+                                pickCell.style.color = '';
+                                if (pickCardCell) {
+                                    pickCardCell.innerHTML = pickNameStr;
+                                }
+                            }
+                        } else if (isPreGame) {
+                            const pickCell = document.getElementById(`pick-${game.id}`);
+                            const pickCardCell = document.getElementById(`pick-card-${game.id}`);
+                            const neededHtml = `<span class="badge-pick-needed">Pick Needed &rarr;</span>`;
+                            if (pickCell && (pickCell.textContent === '-' || pickCell.textContent === '')) {
+                                pickCell.innerHTML = neededHtml;
+                            }
+                            if (pickCardCell && (pickCardCell.textContent === '-' || pickCardCell.textContent === '')) {
+                                pickCardCell.innerHTML = neededHtml;
+                            }
+                        }
+                    } else if (isPreGame) {
+                        const pickCell = document.getElementById(`pick-${game.id}`);
+                        const pickCardCell = document.getElementById(`pick-card-${game.id}`);
+                        const neededHtml = `<span class="badge-pick-needed">Pick Needed &rarr;</span>`;
+                        if (pickCell && (pickCell.textContent === '-' || pickCell.textContent === '')) {
+                            pickCell.innerHTML = neededHtml;
+                        }
+                        if (pickCardCell && (pickCardCell.textContent === '-' || pickCardCell.textContent === '')) {
+                            pickCardCell.innerHTML = neededHtml;
+                        }
+                    }
+                }).catch(err => {
+                    console.warn(`Error processing game ${game.id}:`, err);
+                });
+            });
+        }
+
+        loadScheduleData();
+
+        if (typeof auth !== 'undefined' && auth) {
+            auth.onAuthStateChanged(user => {
+                if (user && user.uid !== USER_UID) {
+                    USER_UID = user.uid;
+                    if (allScheduleEvents.length > 0) {
+                        loadGameDetailsAndPicks(allScheduleEvents);
+                    }
+                }
+            });
+        }
     </script>

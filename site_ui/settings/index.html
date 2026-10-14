@@ -100,46 +100,38 @@ permalink: /settings/
 
     function saveSettings() {
         const selectedName = teamInput.value.trim();
-        let selectedTeam = teamsData.find(t => t.displayName.toLowerCase() === selectedName.toLowerCase());
+        let selectedTeam = teamsData.find(t => t.displayName && t.displayName.toLowerCase() === selectedName.toLowerCase());
         if (!selectedTeam && selectedName.length >= 2) {
             selectedTeam = teamsData.find(t => (t.displayName && t.displayName.toLowerCase().includes(selectedName.toLowerCase())) || (t.shortDisplayName && t.shortDisplayName.toLowerCase() === selectedName.toLowerCase()));
             if (selectedTeam) teamInput.value = selectedTeam.displayName;
         }
 
+        const currentTeamId = getFavoriteTeamId();
+        const teamIdToSave = selectedTeam ? selectedTeam.id : currentTeamId;
         const displayName = document.getElementById('display-name').value.trim();
         const msg = document.getElementById('message');
-        
-        if (selectedTeam) {
+
+        function notifySaved(isRemote) {
+            localStorage.setItem('favoriteTeamId', teamIdToSave);
+            localStorage.setItem('displayName', displayName);
+            msg.textContent = isRemote ? 'Settings saved! Redirecting to scoreboard...' : 'Settings saved locally! Redirecting to scoreboard...';
+            msg.style.backgroundColor = '#d4edda';
+            msg.style.color = '#155724';
+            msg.style.display = 'block';
+            setTimeout(() => window.location.href = '/College-Basketball-Stats/scoreboard', 1200);
+        }
+
+        if (selectedTeam || currentTeamId) {
             const user = (typeof auth !== 'undefined' && auth) ? auth.currentUser : null;
             if (user && typeof db !== 'undefined' && db) {
                 db.collection('user_settings').doc(user.uid).set({
-                    favoriteTeamId: selectedTeam.id,
+                    favoriteTeamId: teamIdToSave,
                     displayName: displayName
-                }, { merge: true }).then(() => {
-                    localStorage.setItem('favoriteTeamId', selectedTeam.id);
-                    localStorage.setItem('displayName', displayName);
-                    msg.textContent = 'Settings saved! Redirecting to scoreboard...';
-                    msg.style.backgroundColor = '#d4edda';
-                    msg.style.color = '#155724';
-                    msg.style.display = 'block';
-                    setTimeout(() => window.location.href = '/College-Basketball-Stats/scoreboard', 1200);
-                }).catch(() => {
-                    localStorage.setItem('favoriteTeamId', selectedTeam.id);
-                    localStorage.setItem('displayName', displayName);
-                    msg.textContent = 'Settings saved locally! Redirecting to scoreboard...';
-                    msg.style.backgroundColor = '#d4edda';
-                    msg.style.color = '#155724';
-                    msg.style.display = 'block';
-                    setTimeout(() => window.location.href = '/College-Basketball-Stats/scoreboard', 1200);
-                });
+                }, { merge: true })
+                .then(() => notifySaved(true))
+                .catch(() => notifySaved(false));
             } else {
-                localStorage.setItem('favoriteTeamId', selectedTeam.id);
-                localStorage.setItem('displayName', displayName);
-                msg.textContent = 'Settings saved locally! Redirecting to scoreboard...';
-                msg.style.backgroundColor = '#d4edda';
-                msg.style.color = '#155724';
-                msg.style.display = 'block';
-                setTimeout(() => window.location.href = '/College-Basketball-Stats/scoreboard', 1200);
+                notifySaved(false);
             }
         } else {
             msg.textContent = 'Please select a valid team from the list.';

@@ -90,8 +90,10 @@
 
         if (localStorage.getItem('isLoggedIn') === 'true') {
             const userDropdown = document.getElementById('user-dropdown');
-            userDropdown.style.display = 'flex';
-            userDropdown.style.alignItems = 'center';
+            if (userDropdown) {
+                userDropdown.style.display = 'flex';
+                userDropdown.style.alignItems = 'center';
+            }
 
             const localTeamId = getFavoriteTeamId();
             const logo = document.getElementById('user-team-logo');
@@ -121,6 +123,14 @@
                     }
                 });
             }
+        } else {
+            document.body.classList.add('logged-out');
+            const mobileBottomNav = document.getElementById('mobile-bottom-nav');
+            if (mobileBottomNav) mobileBottomNav.style.display = 'none';
+            const navLinks = document.getElementById('nav-links');
+            if (navLinks) navLinks.style.display = 'none';
+            const mobileMenuBtn = document.querySelector('.mobile-menu-btn');
+            if (mobileMenuBtn) mobileMenuBtn.style.display = 'none';
         }
         
         // Update Dark Mode Button Text
@@ -256,7 +266,7 @@
             }
         }
 
-        window.onclick = function(event) {
+        window.addEventListener('click', function(event) {
             if (!event.target.closest('#user-dropdown') && !event.target.closest('#league-dropdown')) {
                 var dropdowns = document.getElementsByClassName("dropdown-content");
                 for (var i = 0; i < dropdowns.length; i++) {
@@ -278,7 +288,7 @@
                     nav.classList.remove('show');
                 }
             }
-        }
+        });
         function logout() {
             if (typeof auth !== 'undefined' && auth) {
                 auth.signOut().finally(() => {

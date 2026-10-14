@@ -1,17 +1,22 @@
 ---
-layout: default
-title: CBB Fantasy
+layout: null
+permalink: /
 ---
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<script>
-  if (localStorage.getItem('isLoggedIn') === 'true') {
-    window.location.href = '/College-Basketball-Stats/scoreboard';
-  } else {
-    window.location.href = '/College-Basketball-Stats/login';
-  }
-</script>
+    <meta charset="utf-8">
+    <title>Redirecting...</title>
+    <script>
+        if (localStorage.getItem('isLoggedIn') === 'true') {
+            window.location.replace('{{ site.baseurl }}/scoreboard');
+        } else {
+            window.location.replace('{{ site.baseurl }}/login');
+        }
+    </script>
+    <noscript>
+        <meta http-equiv="refresh" content="0; url={{ site.baseurl }}/login">
+    </noscript>
 </head>
 <body>
 </body>

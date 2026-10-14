@@ -129,15 +129,7 @@ permalink: /login/
                 
                 auth.createUserWithEmailAndPassword(email, password)
                     .then((userCredential) => {
-                        localStorage.setItem('isLoggedIn', 'true');
-                        localStorage.setItem('username', email.split('@')[0]);
-                        
-                        // Create default settings
-                        db.collection('user_settings').doc(userCredential.user.uid).set({
-                            favoriteTeamId: '152'
-                        });
-
-                        window.location.href = '/College-Basketball-Stats/scoreboard';
+                        handleAuthSuccess(userCredential.user);
                     })
                     .catch((err) => {
                         error.textContent = err.message;
@@ -146,9 +138,7 @@ permalink: /login/
             } else {
                 auth.signInWithEmailAndPassword(email, password)
                     .then((userCredential) => {
-                        localStorage.setItem('isLoggedIn', 'true');
-                        localStorage.setItem('username', email.split('@')[0]);
-                        window.location.href = '/College-Basketball-Stats/scoreboard';
+                        handleAuthSuccess(userCredential.user);
                     })
                     .catch((err) => {
                         error.textContent = 'Incorrect email or password';

@@ -13,8 +13,7 @@ permalink: /standings/
 <script>
     checkAuth();
 
-    const TEAM_ID = getFavoriteTeamId();
-    const SPORT_PATH = getSportPath();
+    const { teamId: TEAM_ID, sportPath: SPORT_PATH } = getAppContext();
 
     // Fetch Standings
     fetch(`https://site.api.espn.com/apis/v2/sports/basketball/${SPORT_PATH}/standings`)

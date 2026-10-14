@@ -14,17 +14,15 @@ permalink: /roster/
     <script>
         checkAuth();
 
-        const TEAM_ID = getFavoriteTeamId();
-        const LEAGUE = getLeague();
-        const SPORT_PATH = getSportPath();
+        const { teamId: TEAM_ID, league: LEAGUE, sportPath: SPORT_PATH } = getAppContext();
         const chartInstances = {};
 
         let teamSchedule = [];
         fetchTeamSchedule(SPORT_PATH, TEAM_ID)
             .then(data => {
-                 if (data.events) {
+                 if (data && data.events) {
                     teamSchedule = data.events
-                        .filter(e => e.competitions[0].status.type.completed)
+                        .filter(e => e.competitions?.[0]?.status?.type?.completed)
                         .map(e => {
                             const date = new Date(e.date);
                             return {
@@ -35,7 +33,8 @@ permalink: /roster/
                         })
                         .sort((a, b) => a.date - b.date);
                 }
-            });
+            })
+            .catch(e => console.warn('Could not load team schedule for roster chart:', e));
 
         // Fetch roster
         fetchTeamRoster(SPORT_PATH, TEAM_ID)
@@ -204,6 +203,10 @@ permalink: /roster/
                             }
 
                             content.setAttribute('data-loaded', 'true');
+                        })
+                        .catch(err => {
+                            console.error('Error loading gamelog:', err);
+                            content.innerHTML = '<p class="error" style="padding: 10px;">Failed to load player stats gamelog.</p>';
                         });
                 }
             } else {

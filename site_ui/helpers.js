@@ -164,6 +164,14 @@ function getCollectionName(teamId, league) {
     return `${teamId || getFavoriteTeamId()}${(league || getLeague()) === 'mens' ? 'm' : 'w'}`;
 }
 
+function getAppContext() {
+    const teamId = getFavoriteTeamId();
+    const league = getLeague();
+    const sportPath = getSportPath(league);
+    const collectionName = getCollectionName(teamId, league);
+    return { teamId, league, sportPath, collectionName };
+}
+
 function getTeamLogoHtml(team) {
     if (!team) return '';
     const logoLight = team.logos?.[0]?.href || team.logo || '';

@@ -1497,12 +1497,14 @@ permalink: /scoreboard/
       loadStats(localStorage.getItem('league') || 'mens');
   }
 
-  auth.onAuthStateChanged(user => {
-      if (user && !isMockLive) {
-          USER_UID = user.uid;
-          loadStats(localStorage.getItem('league') || 'mens', true);
-      }
-  });
+  if (typeof auth !== 'undefined' && auth) {
+      auth.onAuthStateChanged(user => {
+          if (user && !isMockLive) {
+              USER_UID = user.uid;
+              loadStats(localStorage.getItem('league') || 'mens', true);
+          }
+      });
+  }
 
   window.addEventListener('hashchange', () => {
       stopLivePolling();
