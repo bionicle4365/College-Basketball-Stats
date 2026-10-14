@@ -2023,38 +2023,176 @@ body.dark-mode .sb-group-empty-text p {
     color: #aaa !important;
 }
 
+/* Scoreboard Pregame Matchup Header & Pick Box Styling */
+.pregame-score-board {
+    margin-bottom: 16px;
+}
+.pregame-score-board .vs {
+    font-weight: 700;
+    font-size: 1.1rem;
+    color: #888;
+    margin: 0 16px;
+}
+body.dark-mode .pregame-score-board .vs {
+    color: #aaa;
+}
+
+.pick-box-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+    text-align: left;
+}
+.pick-deadline-subtext {
+    font-size: 0.82rem;
+    color: #cc0000;
+    font-weight: 700;
+    background: #fdf2f2;
+    padding: 3px 10px;
+    border-radius: 12px;
+    border: 1px solid #f5c2c2;
+}
+body.dark-mode .pick-deadline-subtext {
+    background: #2a1515;
+    color: #ff6b6b;
+    border-color: #5c2424;
+}
+.pick-val-explainer {
+    text-align: left;
+    margin: 0 0 12px 0;
+    color: #666;
+    font-size: 0.88rem;
+}
+body.dark-mode .pick-val-explainer {
+    color: #aaa;
+}
+.pick-controls-wrapper {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    justify-content: flex-start;
+}
+.pick-save-btn {
+    white-space: nowrap;
+}
+
+.sb-group-member-details {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    text-align: left;
+}
+.sb-group-member-pick-mobile {
+    display: none;
+}
+
 /* Mobile Responsive */
 @media (max-width: 600px) {
+    /* Scoreboard Pregame Matchup */
+    .pregame-score-board .vs {
+        margin: 0 8px;
+        font-size: 0.95rem;
+    }
+    .pick-container {
+        padding: 14px 10px;
+        margin-top: 14px;
+    }
+    .pick-box-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+    }
+    .pick-controls-wrapper {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .pick-select {
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .pick-save-btn {
+        width: 100%;
+        padding: 11px !important;
+    }
+
+    /* Scoreboard Linescore & Last Play */
+    .linescore-table th.col-total,
+    .linescore-table td.col-total {
+        display: none;
+    }
+    .last-play-card {
+        padding: 8px 10px;
+        margin: 8px auto;
+        font-size: 0.82rem;
+    }
+
+    /* Scoreboard Group Widget on Mobile */
     .scoreboard-group-widget {
-        margin: 12px auto;
+        margin: 10px auto;
         border-radius: 6px;
     }
     .sb-group-header {
-        padding: 10px 12px;
+        padding: 8px 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .sb-group-header-left {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+        flex: 1;
+        min-width: 0;
+    }
+    .sb-group-title {
+        font-size: 0.88rem;
+        font-weight: 700;
+    }
+    .sb-group-status-pill {
+        font-size: 0.68rem;
+        padding: 2px 6px;
+        white-space: nowrap;
+    }
+    .sb-group-toggle-btn {
+        padding: 3px 8px;
+        font-size: 0.75rem;
+        flex-shrink: 0;
+    }
+    .sb-group-cell-pick {
+        display: none;
+    }
+    .sb-group-member-pick-mobile {
+        display: block;
+        font-size: 0.75rem;
+        color: #586069;
+        margin-top: 2px;
+    }
+    body.dark-mode .sb-group-member-pick-mobile {
+        color: #8b949e;
     }
     .sb-group-cell-rank {
-        width: 32px;
-        padding: 8px 4px;
+        width: 28px;
+        padding: 8px 2px;
     }
     .sb-group-cell-member {
         padding: 8px 4px;
     }
     .sb-group-member-name {
-        max-width: 95px;
-        font-size: 0.82rem;
-    }
-    .sb-group-avatar {
-        width: 24px;
-        height: 24px;
-        font-size: 0.7rem;
-    }
-    .sb-group-cell-pick {
-        padding: 8px 6px;
-        font-size: 0.82rem;
+        max-width: none;
+        font-size: 0.84rem;
     }
     .sb-group-cell-val {
-        width: 75px;
-        padding: 8px 10px 8px 4px;
+        width: 70px;
+        padding: 8px 8px 8px 2px;
+    }
+    .sb-group-cell-status {
+        padding: 8px 10px;
     }
     .sb-val-pill {
         font-size: 0.75rem;
@@ -2063,7 +2201,7 @@ body.dark-mode .sb-group-empty-text p {
     }
     .sb-status-badge {
         font-size: 0.75rem;
-        padding: 2px 5px;
+        padding: 2px 6px;
     }
     .sb-group-empty-inner {
         flex-direction: column;
@@ -2073,5 +2211,30 @@ body.dark-mode .sb-group-empty-text p {
         width: 100%;
         text-align: center;
         margin-top: 6px;
+    }
+
+    /* Box Score Sticky Columns & Table on Mobile */
+    .stats-table th.col-val,
+    .stats-table td.col-val {
+        min-width: 36px;
+        width: 36px;
+        padding: 6px 2px;
+        font-size: 0.82rem;
+    }
+    .stats-table th.col-player,
+    .stats-table td.col-player {
+        left: 36px;
+        min-width: 105px;
+        max-width: 115px;
+        padding: 6px 4px;
+        font-size: 0.82rem;
+    }
+    .stats-table th, .stats-table td {
+        padding: 6px 3px;
+        font-size: 0.8rem;
+    }
+    .val-formula-pill-btn {
+        padding: 4px 8px;
+        font-size: 0.75rem;
     }
 }

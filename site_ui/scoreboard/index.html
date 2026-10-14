@@ -1119,7 +1119,7 @@ permalink: /scoreboard/
           if (i > 3) colName = `OT${i - 2}`;
           headerHtml += `<th>${colName}</th>`;
       }
-      headerHtml += '<th>T</th>';
+      headerHtml += '<th class="col-total">T</th>';
 
       const buildRow = (c) => {
           let row = `<td style="text-align:left; font-weight:500;">${getTeamLogoHtml(c.team)} ${c.team.abbreviation || c.team.shortDisplayName}</td>`;
@@ -1127,7 +1127,7 @@ permalink: /scoreboard/
               const val = c.linescores?.[i]?.displayValue ?? c.linescores?.[i]?.value ?? '-';
               row += `<td>${val}</td>`;
           }
-          row += `<td style="font-weight:bold;">${c.score || 0}</td>`;
+          row += `<td class="col-total" style="font-weight:bold;">${c.score || 0}</td>`;
           return `<tr>${row}</tr>`;
       };
 
@@ -1301,22 +1301,16 @@ permalink: /scoreboard/
 
           const rowsHtml = memberRows.map(m => `
             <tr class="sb-group-row ${m.isYou ? 'sb-is-you' : ''}">
-              <td class="sb-group-cell-rank">
-                <span class="rank-badge rank-none">-</span>
-              </td>
-              <td class="sb-group-cell-member">
+              <td class="sb-group-cell-member" colspan="2">
                 <div class="sb-group-member-info">
                   <span class="sb-group-avatar">${escapeHtml(m.initials)}</span>
                   <span class="sb-group-member-name">${escapeHtml(m.name)}${m.isYou ? ' <span class="user-you-tag">You</span>' : ''}</span>
                 </div>
               </td>
-              <td class="sb-group-cell-pick">
+              <td class="sb-group-cell-status" style="text-align: right; padding-right: 12px;">
                 ${m.hasSubmitted 
-                    ? '<span class="sb-status-badge submitted">✓ Pick Submitted</span>' 
-                    : '<span class="sb-status-badge waiting">⏳ Waiting for pick</span>'}
-              </td>
-              <td class="sb-group-cell-val">
-                <span class="sb-val-pill sb-val-hidden">🔒 Hidden</span>
+                    ? '<span class="sb-status-badge submitted">✓ Submitted</span>' 
+                    : '<span class="sb-status-badge waiting">⏳ Pending</span>'}
               </td>
             </tr>
           `).join('');
@@ -1433,7 +1427,10 @@ permalink: /scoreboard/
           <td class="sb-group-cell-member">
             <div class="sb-group-member-info">
               <span class="sb-group-avatar">${escapeHtml(m.initials)}</span>
-              <span class="sb-group-member-name">${escapeHtml(m.name)}${m.isYou ? ' <span class="user-you-tag">You</span>' : ''}</span>
+              <div class="sb-group-member-details">
+                <span class="sb-group-member-name">${escapeHtml(m.name)}${m.isYou ? ' <span class="user-you-tag">You</span>' : ''}</span>
+                <span class="sb-group-member-pick-mobile">${m.hasPick ? escapeHtml(m.playerName) : '<span class="sb-no-pick">No Pick</span>'}</span>
+              </div>
             </div>
           </td>
           <td class="sb-group-cell-pick">
@@ -1544,21 +1541,22 @@ permalink: /scoreboard/
     const display = document.getElementById('game-display');
     const gameDate = event.date || competition?.date;
     
+    const isPre = state === 'pre';
     display.innerHTML = `
       ${statusBadgeHtml}
-      <div class="score-board">
+      <div class="score-board ${isPre ? 'pregame-score-board' : ''}">
         <div class="team">
           ${getTeamLogoHtml(awayTeam.team)}
           <span class="team-name">${getRank(awayTeam)}${awayTeam.team.shortDisplayName || awayTeam.team.nickname || awayTeam.team.displayName}</span>
           <div class="team-record">${getRecord(awayTeam)}</div>
-          <div class="team-score">${awayTeam.score || 0}</div>
+          ${!isPre ? `<div class="team-score">${awayTeam.score || 0}</div>` : ''}
         </div>
         <div class="vs">VS</div>
         <div class="team">
           ${getTeamLogoHtml(homeTeam.team)}
           <span class="team-name">${getRank(homeTeam)}${homeTeam.team.shortDisplayName || homeTeam.team.nickname || homeTeam.team.displayName}</span>
           <div class="team-record">${getRecord(homeTeam)}</div>
-          <div class="team-score">${homeTeam.score || 0}</div>
+          ${!isPre ? `<div class="team-score">${homeTeam.score || 0}</div>` : ''}
         </div>
       </div>
       ${linescoreHtml}
@@ -1669,18 +1667,13 @@ permalink: /scoreboard/
 
       return `
         <div class="pick-container">
-            <div class="pick-countdown-card">
-                <div class="countdown-badge-row">
-                    <span class="countdown-badge-icon">⏳</span>
-                    <span class="countdown-badge-label">Picks Lock In</span>
-                </div>
-                <div id="pick-countdown-timer" class="countdown-timer-digits">--:--:--</div>
-                <div class="countdown-subtext">${tipoffDateStr ? `Tip-off: ${tipoffDateStr} at ${tipoffTimeStr}` : 'Locks promptly at scheduled tip-off.'}</div>
-            </div>
-
+            <span id="pick-countdown-timer" style="display:none;"></span>
             <div class="pick-box">
-                <h3 style="margin: 0 0 8px 0;">Make Your Pick</h3>
-                <p style="margin: 0 0 12px 0; color: #666; font-size: 0.9rem;">Select the player you predict will achieve the highest VAL score in this game: <a href="javascript:void(0)" onclick="showValFormulaModal(event)" class="val-inline-link">What is VAL?</a></p>
+                <div class="pick-box-header">
+                    <h3 style="margin: 0;">Make Your Pick</h3>
+                    <span class="pick-deadline-subtext">${tipoffDateStr ? `Locks ${tipoffDateStr} at ${tipoffTimeStr}` : 'Locks at scheduled tip-off'}</span>
+                </div>
+                <p class="pick-val-explainer">Select the player you predict will achieve the highest VAL score in this game: <a href="javascript:void(0)" onclick="showValFormulaModal(event)" class="val-inline-link">What is VAL?</a></p>
                 
                 ${cooldownBarHtml}
                 ${conflictCardHtml}
@@ -1690,7 +1683,7 @@ permalink: /scoreboard/
                         <option value="">-- Select Player --</option>
                         ${options}
                     </select>
-                    <button id="save-pick-btn" data-game-id="${escapeHtml(gameId)}" data-game-date="${safeGameDate}" class="btn btn-primary" style="padding: 10px 20px;">Save Pick</button>
+                    <button id="save-pick-btn" data-game-id="${escapeHtml(gameId)}" data-game-date="${safeGameDate}" class="btn btn-primary pick-save-btn" style="padding: 10px 20px;">Save Pick</button>
                 </div>
                 <div id="pick-message" style="margin-top: 10px; min-height: 20px; font-weight: bold; font-size: 0.9rem;">
                     ${pickedPlayerId && !isPickedPlayerConflicted ? `<span style="color: #2e7d32;">✓ Your pick is saved. You can change it anytime before tip-off.</span>` : ''}
@@ -1812,7 +1805,7 @@ permalink: /scoreboard/
         const rowClass = isPicked ? 'picked-row' : '';
         return `<tr class="${rowClass}">
           <td class="col-val" style="font-weight:bold;">${score}</td>
-          <td class="col-player" style="text-align:left; white-space:nowrap; cursor:pointer;" onclick="showValBreakdown(this)" data-breakdown="${tooltip}">${activeIndicator}${name} <span class="val-info-badge" title="VAL breakdown">ℹ️</span></td>
+          <td class="col-player" style="text-align:left; white-space:nowrap; cursor:pointer;" onclick="showValBreakdown(this)" data-breakdown="${tooltip}">${activeIndicator}${name}</td>
           ${cells}
         </tr>`;
       }).join('');
@@ -1836,7 +1829,7 @@ permalink: /scoreboard/
       return `<button class="${activeClass}" data-team-index="${index}">${teamName}</button>`;
     }).join('');
 
-    return `<div class="controls boxscore-controls" style="margin-top: 10px; margin-bottom: 10px;"><div class="btn-group">${toggleButtons}</div><button type="button" class="val-formula-pill-btn" onclick="showValFormulaModal(event)" title="VAL Formula explanation">ℹ️ VAL Formula</button></div>` + teamHtmls.join('');
+    return `<div class="controls boxscore-controls" style="margin-top: 10px; margin-bottom: 10px;"><div class="btn-group">${toggleButtons}</div><button type="button" class="val-formula-pill-btn" onclick="showValFormulaModal(event)" title="VAL Formula explanation">ℹ️ Formula</button></div>` + teamHtmls.join('');
   }
 
   // Event delegation on game-display
