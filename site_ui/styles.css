@@ -306,8 +306,8 @@ body.dark-mode .standings-table tr.highlight-team { background-color: #1b3a1e; c
 .user-cell { display: flex; align-items: center; gap: 8px; }
 .user-avatar { width: 26px; height: 26px; border-radius: 50%; background: #e0e0e0; display: inline-flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: bold; color: #555; }
 .user-you-tag { font-size: 0.75rem; background: #e8f5e9; color: #2e7d32; padding: 1px 6px; border-radius: 4px; font-weight: bold; margin-left: 4px; }
-.user-owner-tag { font-size: 0.72rem; background: #fff8e1; color: #b78103; border: 1px solid #ffe082; padding: 1px 6px; border-radius: 4px; font-weight: 700; margin-left: 4px; }
-.group-owner-pill { background: #fff8e1; color: #b78103; border: 1px solid #ffe082; font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 10px; display: inline-flex; align-items: center; gap: 4px; }
+.user-owner-tag { font-size: 0.72rem; background: #fff8e1; color: #b78103; border: 1px solid #ffe082; padding: 2px 7px; border-radius: 4px; font-weight: 700; margin-left: 6px; white-space: nowrap; display: inline-block; vertical-align: middle; line-height: 1.2; }
+.group-owner-pill { background: #fff8e1; color: #b78103; border: 1px solid #ffe082; font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 10px; display: inline-flex; align-items: center; white-space: nowrap; line-height: 1.2; }
 .group-header-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .group-privacy-btn { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; }
 
@@ -319,6 +319,9 @@ body.dark-mode .standings-table tr.highlight-team { background-color: #1b3a1e; c
 
 .clickable-row { cursor: pointer; transition: background 0.15s ease-in-out; }
 .clickable-row:hover { background-color: #f8f9fa; }
+.leaderboard-table tr.highlight-user-row { background-color: #e8f5e9; }
+.leaderboard-table tr.highlight-user-row:hover { background-color: #d7edd9; }
+.leaderboard-table tr.highlight-user-row .user-avatar { background: #c8e6c9; color: #1b5e20; }
 
 /* Member Pick Breakdown Modal */
 .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center; }
@@ -364,6 +367,9 @@ body.dark-mode .trend-top { background: #1b3a1e; color: #81c784; border-color: #
 body.dark-mode .trend-normal { background: #2d2d2d; color: #e0e0e0; border-color: #444; }
 body.dark-mode .trend-none { background: #222; color: #666; border-color: #333; }
 body.dark-mode .clickable-row:hover { background-color: #252525 !important; }
+body.dark-mode .leaderboard-table tr.highlight-user-row { background-color: #1b3a1e; color: #e0e0e0; }
+body.dark-mode .leaderboard-table tr.highlight-user-row:hover { background-color: #244c28 !important; }
+body.dark-mode .leaderboard-table tr.highlight-user-row .user-avatar { background: #2e7d32; color: #e8f5e9; }
 body.dark-mode .modal-box { background-color: #1e1e1e; color: #e0e0e0; border: 1px solid #333; }
 body.dark-mode .modal-close { color: #aaa; }
 body.dark-mode .game-matrix-table th { background-color: #2d2d2d; color: #e0e0e0; border-color: #444; }
@@ -1547,16 +1553,18 @@ body.dark-mode .countdown-subtext {
 /* Pick Cooldown Styles */
 .cooldown-info-bar {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
+    justify-content: center;
     gap: 8px;
     background: #f0f4f8;
     border: 1px solid #d0d7de;
     border-radius: 6px;
     padding: 8px 12px;
-    margin-bottom: 12px;
+    margin: 0 auto 12px auto;
+    max-width: 550px;
     font-size: 0.85rem;
     color: #333;
-    text-align: left;
+    text-align: center;
 }
 body.dark-mode .cooldown-info-bar {
     background: #21262d;
@@ -1569,11 +1577,12 @@ body.dark-mode .cooldown-info-bar {
     margin-top: -1px;
 }
 .cooldown-info-text {
-    flex: 1;
     line-height: 1.4;
+    text-align: center;
 }
 .cooldown-tags {
-    display: inline-flex;
+    display: flex;
+    justify-content: center;
     gap: 6px;
     margin-top: 4px;
     flex-wrap: wrap;
@@ -1595,15 +1604,17 @@ body.dark-mode .cooldown-tag {
 
 .cooldown-conflict-card {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
+    justify-content: center;
     gap: 10px;
     background: #fff8e1;
     border: 1px solid #ffe082;
     border-left: 4px solid #ff8f00;
     border-radius: 6px;
     padding: 10px 14px;
-    margin-bottom: 14px;
-    text-align: left;
+    margin: 0 auto 14px auto;
+    max-width: 550px;
+    text-align: center;
     color: #5d4037;
 }
 body.dark-mode .cooldown-conflict-card {
@@ -1617,10 +1628,14 @@ body.dark-mode .cooldown-conflict-card {
     flex-shrink: 0;
     margin-top: 2px;
 }
+.cooldown-card-body {
+    text-align: center;
+}
 .cooldown-card-body p {
     margin: 4px 0 0 0;
     font-size: 0.85rem;
     line-height: 1.4;
+    text-align: center;
 }
 .option-cooldown {
     color: #888 !important;
@@ -2133,22 +2148,27 @@ body.dark-mode .pregame-score-board .vs {
     color: #aaa;
 }
 
+.pick-box {
+    text-align: center;
+}
 .pick-box-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: center;
     align-items: center;
     gap: 12px;
     margin-bottom: 8px;
-    text-align: left;
+    text-align: center;
 }
 .pick-box-header h3 {
     margin: 0;
     font-size: 1.25rem;
     white-space: nowrap;
+    text-align: center;
 }
 .pick-val-explainer {
-    text-align: left;
-    margin: 0 0 12px 0;
+    text-align: center;
+    margin: 0 auto 12px auto;
+    max-width: 550px;
     color: #666;
     font-size: 0.88rem;
 }
@@ -2159,7 +2179,9 @@ body.dark-mode .pick-val-explainer {
     display: flex;
     gap: 10px;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: center;
+    max-width: 500px;
+    margin: 0 auto;
 }
 .pick-save-btn {
     white-space: nowrap;
@@ -2185,19 +2207,27 @@ body.dark-mode .pick-val-explainer {
     .pick-container {
         padding: 14px 10px;
         margin-top: 14px;
+        text-align: center;
     }
     .pick-box-header {
         flex-direction: row;
-        justify-content: space-between;
+        justify-content: center;
         align-items: center;
         gap: 8px;
+        text-align: center;
     }
     .pick-box-header h3 {
         font-size: 1.1rem;
+        text-align: center;
+    }
+    .pick-val-explainer {
+        text-align: center;
     }
     .pick-controls-wrapper {
         flex-direction: column;
         align-items: stretch;
+        max-width: 100%;
+        margin: 0 auto;
     }
     .pick-select {
         width: 100%;

@@ -292,7 +292,7 @@ permalink: /groups/
                 const memberCount = group.members?.length || 0;
                 const safeName = escapeHtml(group.name);
                 const isOwner = isGroupOwner(group, USER_UID);
-                const ownerBadge = isOwner ? '<span class="group-owner-pill" style="font-size: 0.7rem; padding: 1px 6px;">👑 Owner</span>' : '';
+                const ownerBadge = isOwner ? '<span class="group-owner-pill" style="font-size: 0.7rem; padding: 1px 6px;">Owner</span>' : '';
                 return `
                 <div class="group-card">
                     <div>
@@ -397,7 +397,7 @@ permalink: /groups/
             const leagueTag = groupData.league === 'womens' ? 'NCAA Women' : 'NCAA Men';
             const lockBadge = groupData.isPrivate ? '🔒 Private Group' : '🌐 Public Group';
             const isOwner = isGroupOwner(groupData, USER_UID);
-            const ownerPill = isOwner ? '<span class="group-owner-pill">👑 Group Owner</span>' : '';
+            const ownerPill = isOwner ? '<span class="group-owner-pill">Owner</span>' : '';
             const privacyBtn = isOwner ? `
                 <button type="button" class="btn btn-secondary btn-sm group-privacy-btn" onclick="openPrivacyModal()">
                     ${groupData.isPrivate ? '⚙️ Privacy Settings' : '🔒 Change to Private Group'}
@@ -470,9 +470,10 @@ permalink: /groups/
                 // Initialize member stats store
                 groupMemberStats = {};
                 members.forEach(uid => {
+                    const localUserName = (uid === USER_UID) ? (localStorage.getItem('displayName') || (typeof auth !== 'undefined' && auth?.currentUser?.displayName)) : null;
                     groupMemberStats[uid] = {
                         uid: uid,
-                        displayName: userProfiles[uid]?.displayName || (uid === USER_UID ? 'You' : `Member ${uid.substring(0, 5)}`),
+                        displayName: userProfiles[uid]?.displayName || localUserName || `Member ${uid.substring(0, 5)}`,
                         favoriteTeamId: userProfiles[uid]?.favoriteTeamId || teamId,
                         totalPoints: 0,
                         picksCount: 0,
@@ -643,9 +644,8 @@ permalink: /groups/
                     else if (rankNum === 3) rankDisplay = `<span class="rank-badge rank-3">3</span>`;
 
                     const isYou = member.uid === USER_UID;
-                    const youBadge = isYou ? `<span class="user-you-tag">You</span>` : '';
                     const isOwner = isGroupOwner(currentGroupData, member.uid);
-                    const ownerBadge = isOwner ? `<span class="user-owner-tag">👑 Owner</span>` : '';
+                    const ownerBadge = isOwner ? `<span class="user-owner-tag">Owner</span>` : '';
                     const avatarLetter = escapeHtml((member.displayName || 'U').charAt(0).toUpperCase());
 
                     const avgVal = member.picksCount > 0 ? (member.totalPoints / member.picksCount).toFixed(1) : '-';
@@ -672,14 +672,13 @@ permalink: /groups/
                     trendHtml += '</div>';
 
                     lbHtml += `
-                        <tr class="clickable-row member-row" data-member-uid="${escapeHtml(member.uid)}">
+                        <tr class="clickable-row member-row ${isYou ? 'highlight-user-row' : ''}" data-member-uid="${escapeHtml(member.uid)}">
                             <td style="text-align: center;">${rankDisplay}</td>
                             <td>
                                 <div class="user-cell">
                                     <div class="user-avatar">${avatarLetter}</div>
                                     <strong style="font-size: 0.95rem;">${escapeHtml(member.displayName)}</strong>
                                     ${ownerBadge}
-                                    ${youBadge}
                                 </div>
                             </td>
                             <td style="text-align: center; font-weight: bold; font-size: 1.1rem; color: #cc0000;">${member.totalPoints}</td>
@@ -712,7 +711,7 @@ permalink: /groups/
                                 <tr>
                                     <th>Date & Opponent</th>
                                     <th>Top Performer</th>
-                                    ${sortedMemberList.map(m => `<th style="text-align: center;">${escapeHtml(m.displayName)}${isGroupOwner(currentGroupData, m.uid) ? ' 👑' : ''}${m.uid === USER_UID ? ' (You)' : ''}</th>`).join('')}
+                                    ${sortedMemberList.map(m => `<th style="text-align: center;">${escapeHtml(m.displayName)}${m.uid === USER_UID ? ' (You)' : ''}</th>`).join('')}
                                 </tr>
                             </thead>
                             <tbody>

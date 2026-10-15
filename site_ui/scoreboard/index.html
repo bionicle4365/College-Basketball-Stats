@@ -1705,7 +1705,7 @@ permalink: /scoreboard/
                     </select>
                     <button id="save-pick-btn" data-game-id="${escapeHtml(gameId)}" data-game-date="${safeGameDate}" class="btn btn-primary pick-save-btn" style="padding: 10px 20px;">Save Pick</button>
                 </div>
-                <div id="pick-message" style="margin-top: 10px; min-height: 20px; font-weight: bold; font-size: 0.9rem;">
+                <div id="pick-message" style="margin-top: 10px; min-height: 20px; font-weight: bold; font-size: 0.9rem; text-align: center;">
                     ${pickedPlayerId && !isPickedPlayerConflicted ? `<span style="color: #2e7d32;">✓ Your pick is saved. You can change it anytime before tip-off.</span>` : ''}
                 </div>
             </div>
