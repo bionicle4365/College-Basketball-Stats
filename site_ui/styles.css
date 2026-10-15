@@ -773,6 +773,96 @@ body.dark-mode .stats-table tr.picked-row td.col-player {
     color: #990000;
 }
 
+/* Player VAL Breakdown Modal Styling */
+.val-breakdown-modal-box {
+    max-width: 580px;
+    width: 92%;
+    padding: 22px 24px;
+    border-radius: 10px;
+}
+
+.val-breakdown-player-sub {
+    font-size: 0.82rem;
+    color: #6b7280;
+    margin-top: 2px;
+    font-weight: 500;
+}
+body.dark-mode .val-breakdown-player-sub {
+    color: #9ca3af;
+}
+
+.val-score-pill {
+    font-size: 0.85rem;
+    font-weight: 700;
+    padding: 4px 12px;
+    border-radius: 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+.val-score-pill.val-positive {
+    background: #f0fdf4;
+    color: #15803d;
+    border: 1px solid #bbf7d0;
+}
+.val-score-pill.val-negative {
+    background: #fef2f2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+}
+.val-score-pill.val-neutral {
+    background: #f0f9ff;
+    color: #0369a1;
+    border: 1px solid #bae6fd;
+}
+body.dark-mode .val-score-pill.val-positive {
+    background: #064e3b;
+    color: #4ade80;
+    border-color: #065f46;
+}
+body.dark-mode .val-score-pill.val-negative {
+    background: #7f1d1d;
+    color: #f87171;
+    border-color: #991b1b;
+}
+body.dark-mode .val-score-pill.val-neutral {
+    background: #0c4a6e;
+    color: #38bdf8;
+    border-color: #075985;
+}
+
+.val-breakdown-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.val-player-info-icon {
+    font-size: 0.72rem;
+    margin-left: 4px;
+    opacity: 0.6;
+    vertical-align: middle;
+    display: inline-block;
+    transition: opacity 0.15s, transform 0.15s;
+}
+.col-player:hover .val-player-info-icon {
+    opacity: 1;
+    transform: scale(1.15);
+}
+
+.stats-table tbody td.col-val {
+    cursor: pointer;
+    transition: color 0.15s, background-color 0.15s;
+}
+.stats-table tbody td.col-val:hover {
+    color: #cc0000;
+    text-decoration: underline;
+}
+
 /* Dark Mode Overrides for VAL Components */
 body.dark-mode .val-formula-pill-btn {
     border-color: #4b5563;
@@ -2040,11 +2130,15 @@ body.dark-mode .pregame-score-board .vs {
 .pick-box-header {
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
-    flex-wrap: wrap;
-    gap: 8px;
+    align-items: center;
+    gap: 12px;
     margin-bottom: 8px;
     text-align: left;
+}
+.pick-box-header h3 {
+    margin: 0;
+    font-size: 1.25rem;
+    white-space: nowrap;
 }
 .pick-deadline-subtext {
     font-size: 0.82rem;
@@ -2054,6 +2148,8 @@ body.dark-mode .pregame-score-board .vs {
     padding: 3px 10px;
     border-radius: 12px;
     border: 1px solid #f5c2c2;
+    white-space: nowrap;
+    margin-left: auto;
 }
 body.dark-mode .pick-deadline-subtext {
     background: #2a1515;
@@ -2101,9 +2197,17 @@ body.dark-mode .pick-val-explainer {
         margin-top: 14px;
     }
     .pick-box-header {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 4px;
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+    }
+    .pick-box-header h3 {
+        font-size: 1.1rem;
+    }
+    .pick-deadline-subtext {
+        font-size: 0.74rem;
+        padding: 2.5px 8px;
     }
     .pick-controls-wrapper {
         flex-direction: column;
@@ -2236,5 +2340,14 @@ body.dark-mode .pick-val-explainer {
     .val-formula-pill-btn {
         padding: 4px 8px;
         font-size: 0.75rem;
+    }
+    .val-breakdown-modal-box {
+        padding: 16px 14px;
+        width: 95%;
+    }
+    .val-breakdown-footer {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
     }
 }

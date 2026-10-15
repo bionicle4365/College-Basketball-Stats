@@ -17,9 +17,9 @@ permalink: /scoreboard/
   {% endif %}
   <!-- Player VAL Breakdown Modal -->
   <div id="val-modal" class="modal-overlay" onclick="closeValModal(event)">
-    <div class="modal-box">
+    <div class="modal-box val-formula-modal-box val-breakdown-modal-box">
         <span class="modal-close" onclick="closeValModal(event)">&times;</span>
-        <div id="val-modal-body" class="modal-body"></div>
+        <div id="val-modal-body" class="val-formula-content"></div>
     </div>
   </div>
 
@@ -114,14 +114,28 @@ permalink: /scoreboard/
     womens: 'https://site.api.espn.com/apis/site/v2/sports/basketball/womens-college-basketball/scoreboard'
   };
 
-  function showValBreakdown(element) {
-      const breakdown = element.getAttribute('data-breakdown');
-      if (breakdown) {
+  function showValBreakdown(target) {
+      const element = (target && target.nodeType) ? target : (target && target.currentTarget ? target.currentTarget : null);
+      if (!element) return;
+
+      let details = null;
+      const detailsJson = element.getAttribute('data-val-details');
+      if (detailsJson) {
+          try {
+              details = JSON.parse(detailsJson);
+          } catch (e) {
+              details = null;
+          }
+      }
+      const breakdownText = element.getAttribute('data-breakdown');
+      if (!details && breakdownText) {
+          details = parseLegacyBreakdownText(breakdownText);
+      }
+      if (details) {
+          const playerName = element.getAttribute('data-player-name') || element.textContent.trim().replace('🏀', '').replace('ℹ️', '').trim() || 'Player VAL Breakdown';
+          const playerSub = element.getAttribute('data-player-sub') || '';
           const bodyEl = document.getElementById('val-modal-body');
-          bodyEl.innerHTML = `<pre class="val-breakdown-pre">${escapeHtml(breakdown)}</pre>
-            <div class="val-breakdown-formula-link">
-              <button type="button" class="btn-text-link" onclick="openFormulaFromBreakdown()">ℹ️ How is this calculated? View VAL Formula</button>
-            </div>`;
+          bodyEl.innerHTML = renderValBreakdownHtml(details, playerName, playerSub);
           document.getElementById('val-modal').style.display = 'flex';
       }
   }
@@ -1170,12 +1184,16 @@ permalink: /scoreboard/
                           const id = String(p.athlete.id);
                           const val = calculateVal(p.stats, labels);
                           const name = p.athlete.shortName || p.athlete.displayName;
+                          const details = getValDetails(p.stats, labels);
                           map[id] = {
                               id: id,
                               val: val,
                               name: name,
                               displayName: p.athlete.displayName,
-                              jersey: p.athlete.jersey || (map[id]?.jersey || '')
+                              jersey: p.athlete.jersey || (map[id]?.jersey || ''),
+                              position: p.athlete.position?.abbreviation || p.athlete.position?.name || '',
+                              team: teamBox.team?.abbreviation || '',
+                              details: details
                           };
                       }
                   });
@@ -1354,7 +1372,10 @@ permalink: /scoreboard/
           const pData = hasPick ? playerValMap[String(pickedId)] : null;
           const val = pData ? pData.val : 0;
           const playerName = pData ? (pData.name || pData.displayName) : (hasPick ? `Player #${pickedId}` : 'No Pick');
-          return { uid, name, initials, isYou, hasPick, pickedId, val, playerName, pickTime };
+          const playerFull = pData ? (pData.displayName || pData.name) : playerName;
+          const playerSub = pData ? [pData.team, pData.jersey ? '#' + pData.jersey : '', pData.position].filter(Boolean).join(' · ') : '';
+          const playerDetailsJson = (pData && pData.details) ? JSON.stringify(pData.details) : '';
+          return { uid, name, initials, isYou, hasPick, pickedId, val, playerName, playerFull, playerSub, playerDetailsJson, pickTime };
       });
 
       memberRows.sort((a, b) => {
@@ -1429,18 +1450,20 @@ permalink: /scoreboard/
               <span class="sb-group-avatar">${escapeHtml(m.initials)}</span>
               <div class="sb-group-member-details">
                 <span class="sb-group-member-name">${escapeHtml(m.name)}${m.isYou ? ' <span class="user-you-tag">You</span>' : ''}</span>
-                <span class="sb-group-member-pick-mobile">${m.hasPick ? escapeHtml(m.playerName) : '<span class="sb-no-pick">No Pick</span>'}</span>
+                <span class="sb-group-member-pick-mobile">${m.hasPick ? (m.playerDetailsJson ? `<span style="cursor:pointer;" onclick="showValBreakdown(this)" data-player-name="${escapeHtml(m.playerFull)}" data-player-sub="${escapeHtml(m.playerSub)}" data-val-details="${escapeHtml(m.playerDetailsJson)}" title="Click to view VAL breakdown">${escapeHtml(m.playerName)} <span class="val-player-info-icon">ℹ️</span></span>` : escapeHtml(m.playerName)) : '<span class="sb-no-pick">No Pick</span>'}</span>
               </div>
             </div>
           </td>
           <td class="sb-group-cell-pick">
             ${m.hasPick 
-                ? `<span class="sb-pick-name">${escapeHtml(m.playerName)}</span>`
+                ? (m.playerDetailsJson 
+                    ? `<span class="sb-pick-name" style="cursor:pointer;" onclick="showValBreakdown(this)" data-player-name="${escapeHtml(m.playerFull)}" data-player-sub="${escapeHtml(m.playerSub)}" data-val-details="${escapeHtml(m.playerDetailsJson)}" title="Click to view VAL breakdown">${escapeHtml(m.playerName)} <span class="val-player-info-icon">ℹ️</span></span>` 
+                    : `<span class="sb-pick-name">${escapeHtml(m.playerName)}</span>`)
                 : `<span class="sb-pick-name sb-no-pick">No Pick</span>`}
           </td>
           <td class="sb-group-cell-val">
             ${m.hasPick
-                ? `<span class="sb-val-pill ${m.val >= 0 ? 'val-pos' : 'val-neg'}">${m.val >= 0 ? '+' : ''}${m.val} VAL</span>`
+                ? `<span class="sb-val-pill ${m.val >= 0 ? 'val-pos' : 'val-neg'}" ${m.playerDetailsJson ? `style="cursor:pointer;" onclick="showValBreakdown(this)" data-player-name="${escapeHtml(m.playerFull)}" data-player-sub="${escapeHtml(m.playerSub)}" data-val-details="${escapeHtml(m.playerDetailsJson)}" title="Click to view VAL breakdown"` : ''}>${m.val >= 0 ? '+' : ''}${m.val} VAL</span>`
                 : `<span class="sb-val-pill val-neutral">-</span>`}
           </td>
         </tr>
@@ -1797,6 +1820,14 @@ permalink: /scoreboard/
       const rows = playersWithVal.map(({ player, stats, score }) => {
         const rawName = player.athlete ? (player.athlete.shortName || player.athlete.displayName) : (player.displayName || 'Team');
         const name = escapeHtml(rawName);
+        const athlete = player.athlete || {};
+        const fullName = athlete.displayName || rawName;
+        const jersey = athlete.jersey ? `#${athlete.jersey}` : '';
+        const position = athlete.position?.abbreviation || athlete.position?.name || '';
+        const teamAbbr = teamBox.team?.abbreviation || '';
+        const subInfo = [teamAbbr, jersey, position].filter(Boolean).join(' · ');
+        const details = getValDetails(stats, labels);
+        const detailsJson = details ? escapeHtml(JSON.stringify(details)) : '';
         const activeIndicator = player.active ? '🏀 ' : '';
         const cells = indices.map(idx => `<td>${idx !== -1 ? escapeHtml(stats[idx] || '0') : '-'}</td>`).join('');
         const tooltip = escapeHtml(getValTooltip(stats, labels));
@@ -1804,8 +1835,8 @@ permalink: /scoreboard/
         const isPicked = player.athlete && String(player.athlete.id) === String(pickedPlayerId);
         const rowClass = isPicked ? 'picked-row' : '';
         return `<tr class="${rowClass}">
-          <td class="col-val" style="font-weight:bold;">${score}</td>
-          <td class="col-player" style="text-align:left; white-space:nowrap; cursor:pointer;" onclick="showValBreakdown(this)" data-breakdown="${tooltip}">${activeIndicator}${name}</td>
+          <td class="col-val" style="font-weight:bold; cursor:pointer;" onclick="showValBreakdown(this)" data-player-name="${escapeHtml(fullName)}" data-player-sub="${escapeHtml(subInfo)}" data-val-details="${detailsJson}" data-breakdown="${tooltip}" title="Click to view VAL breakdown">${score}</td>
+          <td class="col-player" style="text-align:left; white-space:nowrap; cursor:pointer;" onclick="showValBreakdown(this)" data-player-name="${escapeHtml(fullName)}" data-player-sub="${escapeHtml(subInfo)}" data-val-details="${detailsJson}" data-breakdown="${tooltip}">${activeIndicator}${name} <span class="val-player-info-icon" title="View VAL breakdown">ℹ️</span></td>
           ${cells}
         </tr>`;
       }).join('');
