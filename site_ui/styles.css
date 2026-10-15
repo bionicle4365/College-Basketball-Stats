@@ -306,6 +306,10 @@ body.dark-mode .standings-table tr.highlight-team { background-color: #1b3a1e; c
 .user-cell { display: flex; align-items: center; gap: 8px; }
 .user-avatar { width: 26px; height: 26px; border-radius: 50%; background: #e0e0e0; display: inline-flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: bold; color: #555; }
 .user-you-tag { font-size: 0.75rem; background: #e8f5e9; color: #2e7d32; padding: 1px 6px; border-radius: 4px; font-weight: bold; margin-left: 4px; }
+.user-owner-tag { font-size: 0.72rem; background: #fff8e1; color: #b78103; border: 1px solid #ffe082; padding: 1px 6px; border-radius: 4px; font-weight: 700; margin-left: 4px; }
+.group-owner-pill { background: #fff8e1; color: #b78103; border: 1px solid #ffe082; font-size: 0.75rem; font-weight: 700; padding: 2px 8px; border-radius: 10px; display: inline-flex; align-items: center; gap: 4px; }
+.group-header-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.group-privacy-btn { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-weight: 600; }
 
 .trend-container { display: flex; gap: 4px; justify-content: center; }
 .trend-pill { font-size: 0.75rem; padding: 2px 5px; border-radius: 4px; font-weight: bold; background: #f0f0f0; color: #555; white-space: nowrap; }
@@ -354,6 +358,8 @@ body.dark-mode .rank-1 { color: #000; }
 body.dark-mode .rank-2 { color: #000; }
 body.dark-mode .user-avatar { background: #333; color: #e0e0e0; }
 body.dark-mode .user-you-tag { background: #1b3a1e; color: #81c784; }
+body.dark-mode .user-owner-tag { background: #332b00; color: #ffd54f; border-color: #5c4d00; }
+body.dark-mode .group-owner-pill { background: #332b00; color: #ffd54f; border-color: #5c4d00; }
 body.dark-mode .trend-top { background: #1b3a1e; color: #81c784; border-color: #2e7d32; }
 body.dark-mode .trend-normal { background: #2d2d2d; color: #e0e0e0; border-color: #444; }
 body.dark-mode .trend-none { background: #222; color: #666; border-color: #333; }
@@ -2140,22 +2146,6 @@ body.dark-mode .pregame-score-board .vs {
     font-size: 1.25rem;
     white-space: nowrap;
 }
-.pick-deadline-subtext {
-    font-size: 0.82rem;
-    color: #cc0000;
-    font-weight: 700;
-    background: #fdf2f2;
-    padding: 3px 10px;
-    border-radius: 12px;
-    border: 1px solid #f5c2c2;
-    white-space: nowrap;
-    margin-left: auto;
-}
-body.dark-mode .pick-deadline-subtext {
-    background: #2a1515;
-    color: #ff6b6b;
-    border-color: #5c2424;
-}
 .pick-val-explainer {
     text-align: left;
     margin: 0 0 12px 0;
@@ -2204,10 +2194,6 @@ body.dark-mode .pick-val-explainer {
     }
     .pick-box-header h3 {
         font-size: 1.1rem;
-    }
-    .pick-deadline-subtext {
-        font-size: 0.74rem;
-        padding: 2.5px 8px;
     }
     .pick-controls-wrapper {
         flex-direction: column;

@@ -66,6 +66,14 @@ permalink: /groups/
         </div>
     </div>
 
+    <!-- Group Privacy Settings Modal (Owner Only) -->
+    <div id="group-privacy-modal" class="modal-overlay" onclick="closePrivacyModal(event)">
+        <div class="modal-box" style="max-width: 480px; width: 92%; padding: 22px 24px;">
+            <span class="modal-close" onclick="closePrivacyModal(event)">&times;</span>
+            <div id="group-privacy-modal-body"></div>
+        </div>
+    </div>
+
     <script>
         checkAuth();
         const { teamId: TEAM_ID, league: LEAGUE, sportPath: SPORT_PATH } = getAppContext();
@@ -132,6 +140,21 @@ permalink: /groups/
             }
         }
 
+        function getGroupOwnerId(groupData) {
+            if (!groupData) return null;
+            if (groupData.ownerId) return groupData.ownerId;
+            if (groupData.creatorId) return groupData.creatorId;
+            if (Array.isArray(groupData.members) && groupData.members.length > 0) {
+                return groupData.members[0];
+            }
+            return null;
+        }
+
+        function isGroupOwner(groupData, uid) {
+            if (!groupData || !uid) return false;
+            return getGroupOwnerId(groupData) === uid;
+        }
+
         async function createGroup() {
             const nameInput = document.getElementById('new-group-name');
             const name = nameInput.value.trim();
@@ -159,6 +182,7 @@ permalink: /groups/
                     name: name,
                     teamId: TEAM_ID,
                     league: LEAGUE,
+                    ownerId: USER_UID,
                     members: [USER_UID],
                     isPrivate: isPrivate,
                     passwordHash: passwordHash,
@@ -267,13 +291,16 @@ permalink: /groups/
                 const lockIcon = isPrivate ? '🔒 ' : '';
                 const memberCount = group.members?.length || 0;
                 const safeName = escapeHtml(group.name);
+                const isOwner = isGroupOwner(group, USER_UID);
+                const ownerBadge = isOwner ? '<span class="group-owner-pill" style="font-size: 0.7rem; padding: 1px 6px;">👑 Owner</span>' : '';
                 return `
                 <div class="group-card">
                     <div>
                         <div class="group-name">${lockIcon}${safeName}</div>
-                        <div style="font-size: 0.85em; color: #666; margin-top: 3px;">
+                        <div style="font-size: 0.85em; color: #666; margin-top: 3px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
                             <span class="group-badge-pill">${group.league === 'womens' ? 'NCAA-W' : 'NCAA-M'}</span>
-                            <span style="margin-left: 8px;">${memberCount} member${memberCount === 1 ? '' : 's'}</span>
+                            <span>${memberCount} member${memberCount === 1 ? '' : 's'}</span>
+                            ${ownerBadge}
                         </div>
                     </div>
                     ${isMember ? 
@@ -339,24 +366,20 @@ permalink: /groups/
                     return;
                 }
 
+                // Check ownership and auto-backfill ownerId for existing groups if missing
+                const isOwner = isGroupOwner(currentGroupData, USER_UID);
+                if (isOwner && !currentGroupData.ownerId && typeof db !== 'undefined' && db) {
+                    db.collection('groups').doc(groupId).update({ ownerId: USER_UID })
+                        .then(() => {
+                            currentGroupData.ownerId = USER_UID;
+                        })
+                        .catch(err => {
+                            console.warn('Could not auto-backfill ownerId:', err);
+                        });
+                }
+
                 // Render Header
-                const leagueTag = currentGroupData.league === 'womens' ? 'NCAA Women' : 'NCAA Men';
-                const lockBadge = currentGroupData.isPrivate ? '🔒 Private Group' : '🌐 Public Group';
-                headerContainer.innerHTML = `
-                    <div class="group-header-card">
-                        <div class="group-meta">
-                            <img src="https://a.espncdn.com/i/teamlogos/ncaa/500/${escapeHtml(currentGroupData.teamId)}.png" class="group-team-badge" alt="">
-                            <div>
-                                <h2 style="margin: 0 0 4px 0; font-size: 1.4rem;">${escapeHtml(currentGroupData.name)}</h2>
-                                <div style="display: flex; gap: 8px; align-items: center; font-size: 0.85rem; color: #666;">
-                                    <span class="group-badge-pill">${leagueTag}</span>
-                                    <span class="group-badge-pill">${lockBadge}</span>
-                                    <span>${currentGroupData.members.length} Members</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
+                renderGroupHeader(currentGroupData);
 
                 // Calculate group stats and render leaderboard
                 await renderRichGroupData(currentGroupData);
@@ -365,6 +388,43 @@ permalink: /groups/
                 console.error("Error loading group detail:", e);
                 headerContainer.innerHTML = '<div class="error">Error loading group data.</div>';
             }
+        }
+
+        function renderGroupHeader(groupData) {
+            const headerContainer = document.getElementById('single-group-header');
+            if (!headerContainer || !groupData) return;
+
+            const leagueTag = groupData.league === 'womens' ? 'NCAA Women' : 'NCAA Men';
+            const lockBadge = groupData.isPrivate ? '🔒 Private Group' : '🌐 Public Group';
+            const isOwner = isGroupOwner(groupData, USER_UID);
+            const ownerPill = isOwner ? '<span class="group-owner-pill">👑 Group Owner</span>' : '';
+            const privacyBtn = isOwner ? `
+                <button type="button" class="btn btn-secondary btn-sm group-privacy-btn" onclick="openPrivacyModal()">
+                    ${groupData.isPrivate ? '⚙️ Privacy Settings' : '🔒 Change to Private Group'}
+                </button>
+            ` : '';
+
+            headerContainer.innerHTML = `
+                <div class="group-header-card">
+                    <div class="group-meta">
+                        <img src="https://a.espncdn.com/i/teamlogos/ncaa/500/${escapeHtml(groupData.teamId)}.png" class="group-team-badge" alt="">
+                        <div>
+                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <h2 style="margin: 0; font-size: 1.4rem;">${escapeHtml(groupData.name)}</h2>
+                                ${ownerPill}
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center; font-size: 0.85rem; color: #666; margin-top: 4px; flex-wrap: wrap;">
+                                <span class="group-badge-pill">${leagueTag}</span>
+                                <span class="group-badge-pill" id="group-privacy-status-pill">${lockBadge}</span>
+                                <span>${(groupData.members || []).length} Members</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="group-header-actions">
+                        ${privacyBtn}
+                    </div>
+                </div>
+            `;
         }
 
         async function fetchUserProfiles(uids) {
@@ -584,6 +644,8 @@ permalink: /groups/
 
                     const isYou = member.uid === USER_UID;
                     const youBadge = isYou ? `<span class="user-you-tag">You</span>` : '';
+                    const isOwner = isGroupOwner(currentGroupData, member.uid);
+                    const ownerBadge = isOwner ? `<span class="user-owner-tag">👑 Owner</span>` : '';
                     const avatarLetter = escapeHtml((member.displayName || 'U').charAt(0).toUpperCase());
 
                     const avgVal = member.picksCount > 0 ? (member.totalPoints / member.picksCount).toFixed(1) : '-';
@@ -616,6 +678,7 @@ permalink: /groups/
                                 <div class="user-cell">
                                     <div class="user-avatar">${avatarLetter}</div>
                                     <strong style="font-size: 0.95rem;">${escapeHtml(member.displayName)}</strong>
+                                    ${ownerBadge}
                                     ${youBadge}
                                 </div>
                             </td>
@@ -649,7 +712,7 @@ permalink: /groups/
                                 <tr>
                                     <th>Date & Opponent</th>
                                     <th>Top Performer</th>
-                                    ${sortedMemberList.map(m => `<th style="text-align: center;">${escapeHtml(m.displayName)}${m.uid === USER_UID ? ' (You)' : ''}</th>`).join('')}
+                                    ${sortedMemberList.map(m => `<th style="text-align: center;">${escapeHtml(m.displayName)}${isGroupOwner(currentGroupData, m.uid) ? ' 👑' : ''}${m.uid === USER_UID ? ' (You)' : ''}</th>`).join('')}
                                 </tr>
                             </thead>
                             <tbody>
@@ -770,10 +833,259 @@ permalink: /groups/
             }
         }
 
+        function openPrivacyModal() {
+            if (!currentGroupData || !isGroupOwner(currentGroupData, USER_UID)) {
+                return alert("Only the group owner can modify privacy settings.");
+            }
+
+            const modal = document.getElementById('group-privacy-modal');
+            const body = document.getElementById('group-privacy-modal-body');
+            const isPrivate = Boolean(currentGroupData.isPrivate);
+
+            if (!isPrivate) {
+                // Change from Public to Private
+                body.innerHTML = `
+                    <div style="margin-bottom: 16px;">
+                        <h3 style="margin: 0 0 6px 0; font-size: 1.25rem;">🔒 Change to Private Group</h3>
+                        <p style="color: #666; font-size: 0.88rem; line-height: 1.4; margin: 0;">
+                            Make <strong>${escapeHtml(currentGroupData.name)}</strong> private so new members must enter a password to join. Existing members remain in the group.
+                        </p>
+                    </div>
+
+                    <form onsubmit="event.preventDefault(); submitMakePrivate();">
+                        <div style="margin-bottom: 12px;">
+                            <label for="privacy-modal-password" style="display: block; font-size: 0.82rem; font-weight: bold; margin-bottom: 4px;">Group Password</label>
+                            <input type="password" id="privacy-modal-password" placeholder="Enter group password" autocomplete="new-password" style="width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px;" required>
+                        </div>
+
+                        <div style="margin-bottom: 10px;">
+                            <label for="privacy-modal-password-confirm" style="display: block; font-size: 0.82rem; font-weight: bold; margin-bottom: 4px;">Confirm Password</label>
+                            <input type="password" id="privacy-modal-password-confirm" placeholder="Confirm password" autocomplete="new-password" style="width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px;" required>
+                        </div>
+
+                        <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: #555; margin-bottom: 16px; cursor: pointer; user-select: none;">
+                            <input type="checkbox" onchange="togglePrivacyModalPassword()"> Show password
+                        </label>
+
+                        <div id="privacy-modal-error" style="color: #c62828; font-size: 0.85rem; margin-bottom: 12px; font-weight: bold; display: none;"></div>
+
+                        <div style="display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid #eee; padding-top: 14px;">
+                            <button type="button" class="btn btn-secondary" onclick="closePrivacyModal()">Cancel</button>
+                            <button type="submit" class="btn btn-primary" id="btn-save-privacy">🔒 Save &amp; Make Private</button>
+                        </div>
+                    </form>
+                `;
+            } else {
+                // Group is already Private
+                body.innerHTML = `
+                    <div style="margin-bottom: 16px;">
+                        <h3 style="margin: 0 0 6px 0; font-size: 1.25rem;">⚙️ Group Privacy Settings</h3>
+                        <p style="color: #666; font-size: 0.88rem; line-height: 1.4; margin: 0;">
+                            <strong>${escapeHtml(currentGroupData.name)}</strong> is currently <strong>🔒 Private</strong>.
+                        </p>
+                    </div>
+
+                    <form onsubmit="event.preventDefault(); submitChangePassword();" style="margin-bottom: 20px;">
+                        <h4 style="margin: 0 0 10px 0; font-size: 0.95rem;">Change Group Password</h4>
+                        <div style="margin-bottom: 12px;">
+                            <label for="privacy-modal-password" style="display: block; font-size: 0.82rem; font-weight: bold; margin-bottom: 4px;">New Password</label>
+                            <input type="password" id="privacy-modal-password" placeholder="Enter new password" autocomplete="new-password" style="width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px;" required>
+                        </div>
+
+                        <div style="margin-bottom: 10px;">
+                            <label for="privacy-modal-password-confirm" style="display: block; font-size: 0.82rem; font-weight: bold; margin-bottom: 4px;">Confirm New Password</label>
+                            <input type="password" id="privacy-modal-password-confirm" placeholder="Confirm new password" autocomplete="new-password" style="width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px;" required>
+                        </div>
+
+                        <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: #555; margin-bottom: 14px; cursor: pointer; user-select: none;">
+                            <input type="checkbox" onchange="togglePrivacyModalPassword()"> Show password
+                        </label>
+
+                        <div id="privacy-modal-error" style="color: #c62828; font-size: 0.85rem; margin-bottom: 12px; font-weight: bold; display: none;"></div>
+
+                        <button type="submit" class="btn btn-primary" id="btn-change-password">🔑 Update Password</button>
+                    </form>
+
+                    <div style="border-top: 1px solid #eee; padding-top: 16px;">
+                        <h4 style="margin: 0 0 6px 0; font-size: 0.95rem;">Convert to Public Group</h4>
+                        <p style="font-size: 0.85rem; color: #666; margin: 0 0 12px 0;">
+                            Anyone with the link or browsing the group list will be able to join without entering a password.
+                        </p>
+                        <button type="button" class="btn btn-secondary" onclick="submitMakePublic()" style="color: #c62828; border-color: #f5c2c2;">
+                            🌐 Convert to Public Group
+                        </button>
+                    </div>
+                `;
+            }
+
+            modal.style.display = 'flex';
+            setTimeout(() => {
+                const input = document.getElementById('privacy-modal-password');
+                if (input) input.focus();
+            }, 100);
+        }
+
+        function closePrivacyModal(event) {
+            if (!event || event.target.id === 'group-privacy-modal' || event.target.classList.contains('modal-close')) {
+                const modal = document.getElementById('group-privacy-modal');
+                if (modal) modal.style.display = 'none';
+            }
+        }
+
+        function togglePrivacyModalPassword() {
+            const p1 = document.getElementById('privacy-modal-password');
+            const p2 = document.getElementById('privacy-modal-password-confirm');
+            const isShowing = p1 && p1.type === 'text';
+            if (p1) p1.type = isShowing ? 'password' : 'text';
+            if (p2) p2.type = isShowing ? 'password' : 'text';
+        }
+
+        async function submitMakePrivate() {
+            const p1 = document.getElementById('privacy-modal-password')?.value.trim();
+            const p2 = document.getElementById('privacy-modal-password-confirm')?.value.trim();
+            const btn = document.getElementById('btn-save-privacy');
+
+            if (!p1) {
+                showPrivacyModalError('Please enter a password.');
+                return;
+            }
+            if (p1.length < 3) {
+                showPrivacyModalError('Password must be at least 3 characters.');
+                return;
+            }
+            if (p1 !== p2) {
+                showPrivacyModalError('Passwords do not match.');
+                return;
+            }
+
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'Saving...';
+            }
+
+            try {
+                const salt = generateSalt(16);
+                const passwordHash = await hashPassword(p1, salt);
+                const updatePayload = {
+                    isPrivate: true,
+                    passwordHash: passwordHash,
+                    salt: salt,
+                    ownerId: USER_UID
+                };
+
+                await db.collection('groups').doc(currentGroupData.id).update(updatePayload);
+
+                currentGroupData.isPrivate = true;
+                currentGroupData.passwordHash = passwordHash;
+                currentGroupData.salt = salt;
+                currentGroupData.ownerId = USER_UID;
+
+                renderGroupHeader(currentGroupData);
+                closePrivacyModal();
+                alert('✓ Success! Your group is now private.');
+            } catch (err) {
+                console.error('Error changing group to private:', err);
+                showPrivacyModalError('Failed to update group privacy. Please try again.');
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = '🔒 Save & Make Private';
+                }
+            }
+        }
+
+        async function submitChangePassword() {
+            const p1 = document.getElementById('privacy-modal-password')?.value.trim();
+            const p2 = document.getElementById('privacy-modal-password-confirm')?.value.trim();
+            const btn = document.getElementById('btn-change-password');
+
+            if (!p1) {
+                showPrivacyModalError('Please enter a new password.');
+                return;
+            }
+            if (p1.length < 3) {
+                showPrivacyModalError('Password must be at least 3 characters.');
+                return;
+            }
+            if (p1 !== p2) {
+                showPrivacyModalError('Passwords do not match.');
+                return;
+            }
+
+            if (btn) {
+                btn.disabled = true;
+                btn.textContent = 'Updating...';
+            }
+
+            try {
+                const salt = generateSalt(16);
+                const passwordHash = await hashPassword(p1, salt);
+                const updatePayload = {
+                    passwordHash: passwordHash,
+                    salt: salt,
+                    ownerId: USER_UID
+                };
+
+                await db.collection('groups').doc(currentGroupData.id).update(updatePayload);
+
+                currentGroupData.passwordHash = passwordHash;
+                currentGroupData.salt = salt;
+                currentGroupData.ownerId = USER_UID;
+
+                closePrivacyModal();
+                alert('✓ Group password updated successfully!');
+            } catch (err) {
+                console.error('Error changing group password:', err);
+                showPrivacyModalError('Failed to update password. Please try again.');
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = '🔑 Update Password';
+                }
+            }
+        }
+
+        async function submitMakePublic() {
+            if (!confirm(`Are you sure you want to make "${currentGroupData.name}" public? Anyone will be able to join without entering a password.`)) {
+                return;
+            }
+
+            try {
+                const updatePayload = {
+                    isPrivate: false,
+                    passwordHash: null,
+                    salt: null,
+                    ownerId: USER_UID
+                };
+
+                await db.collection('groups').doc(currentGroupData.id).update(updatePayload);
+
+                currentGroupData.isPrivate = false;
+                currentGroupData.passwordHash = null;
+                currentGroupData.salt = null;
+                currentGroupData.ownerId = USER_UID;
+
+                renderGroupHeader(currentGroupData);
+                closePrivacyModal();
+                alert('✓ Success! Your group is now public.');
+            } catch (err) {
+                console.error('Error converting group to public:', err);
+                alert('Failed to update group privacy. Please try again.');
+            }
+        }
+
+        function showPrivacyModalError(msg) {
+            const errEl = document.getElementById('privacy-modal-error');
+            if (errEl) {
+                errEl.textContent = msg;
+                errEl.style.display = 'block';
+            }
+        }
+
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
-                const modal = document.getElementById('member-picks-modal');
-                if (modal) modal.style.display = 'none';
+                const memberModal = document.getElementById('member-picks-modal');
+                const privacyModal = document.getElementById('group-privacy-modal');
+                if (memberModal) memberModal.style.display = 'none';
+                if (privacyModal) privacyModal.style.display = 'none';
             }
         });
     </script>

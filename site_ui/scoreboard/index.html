@@ -1659,8 +1659,6 @@ permalink: /scoreboard/
       }).join('');
       
       const safeGameDate = gameDate ? escapeHtml(gameDate) : '';
-      const tipoffTimeStr = gameDate ? new Date(gameDate).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '';
-      const tipoffDateStr = gameDate ? new Date(gameDate).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) : '';
 
       const hasCooldownTags = Boolean(info.prev || info.next);
       const cooldownBarHtml = `
@@ -1694,7 +1692,6 @@ permalink: /scoreboard/
             <div class="pick-box">
                 <div class="pick-box-header">
                     <h3 style="margin: 0;">Make Your Pick</h3>
-                    <span class="pick-deadline-subtext">${tipoffDateStr ? `Locks ${tipoffDateStr} at ${tipoffTimeStr}` : 'Locks at scheduled tip-off'}</span>
                 </div>
                 <p class="pick-val-explainer">Select the player you predict will achieve the highest VAL score in this game: <a href="javascript:void(0)" onclick="showValFormulaModal(event)" class="val-inline-link">What is VAL?</a></p>
                 

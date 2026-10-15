@@ -22,7 +22,15 @@ service cloud.firestore {
 
     // Groups: authenticated users can read and create groups
     // Users can join by adding strictly their own UID to the members array
+    // Group owners can update group privacy settings and set ownerId
     match /groups/{groupId} {
+      function isGroupOwner() {
+        return isAuthenticated() && (
+          ('ownerId' in resource.data && resource.data.ownerId == request.auth.uid) ||
+          (!('ownerId' in resource.data) && resource.data.members is list && resource.data.members.size() > 0 && resource.data.members[0] == request.auth.uid)
+        );
+      }
+
       allow read: if isAuthenticated();
       allow create: if isAuthenticated() &&
         request.resource.data.keys().hasAll(['name', 'teamId', 'league', 'members', 'isPrivate']) &&
@@ -32,16 +40,26 @@ service cloud.firestore {
         request.resource.data.members is list &&
         request.resource.data.members.size() == 1 &&
         request.resource.data.members[0] == request.auth.uid &&
+        (!('ownerId' in request.resource.data) || request.resource.data.ownerId == request.auth.uid) &&
         (!('password' in request.resource.data));
-      allow update: if isAuthenticated() && 
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members']) &&
-        request.resource.data.members is list &&
-        request.resource.data.members.size() == resource.data.members.size() + 1 &&
-        request.resource.data.members.removeAll(resource.data.members) == [request.auth.uid];
-      allow delete: if isAuthenticated() && 
-        resource.data.members is list &&
-        resource.data.members.size() > 0 &&
-        resource.data.members[0] == request.auth.uid;
+      allow update: if isAuthenticated() && (
+        // Case 1: Member joining group
+        (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members']) &&
+          request.resource.data.members is list &&
+          request.resource.data.members.size() == resource.data.members.size() + 1 &&
+          request.resource.data.members.removeAll(resource.data.members) == [request.auth.uid]
+        ) ||
+        // Case 2: Group owner updating privacy settings or setting ownerId
+        (
+          isGroupOwner() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isPrivate', 'passwordHash', 'salt', 'ownerId']) &&
+          (!('isPrivate' in request.resource.data) || request.resource.data.isPrivate is bool) &&
+          (!('ownerId' in request.resource.data) || request.resource.data.ownerId == request.auth.uid) &&
+          (!('password' in request.resource.data))
+        )
+      );
+      allow delete: if isGroupOwner();
     }
 
     // Team Game Picks (strictly formatted as teamId + league suffix, e.g. 152m, 152w)
