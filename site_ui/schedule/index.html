@@ -23,7 +23,13 @@ permalink: /schedule/
             ])
             .then(([rosterData, data]) => {
                 const athletes = rosterData?.athletes || rosterData?.team?.athletes || [];
-                athletes.forEach(p => playerMap[p.id] = p.shortName || p.displayName);
+                athletes.forEach(p => {
+                    if (p && p.id) {
+                        const name = p.shortName || p.displayName;
+                        playerMap[String(p.id)] = name;
+                        playerMap[p.id] = name;
+                    }
+                });
 
                 const events = (data?.events || []).slice();
                 events.sort((a, b) => new Date(a.date || a.competitions?.[0]?.date) - new Date(b.date || b.competitions?.[0]?.date));
@@ -159,6 +165,7 @@ permalink: /schedule/
                     : Promise.resolve(null);
 
                 return Promise.all([summaryPromise, pickPromise]).then(([summary, pickDoc]) => {
+                    let pickHandledByVal = false;
                     if (summary && summary.boxscore && summary.boxscore.players) {
                         const teamStats = summary.boxscore.players.find(p => String(p.team?.id) === String(TEAM_ID));
                         if (teamStats && teamStats.statistics && teamStats.statistics[0]) {
@@ -193,7 +200,7 @@ permalink: /schedule/
                             }
 
                             // Update Pick VAL if pick exists
-                            if (pickDoc && pickDoc.exists) {
+                            if (pickDoc && pickDoc.exists && USER_UID) {
                                 const pickedPlayerId = pickDoc.data()[USER_UID];
                                 if (pickedPlayerId) {
                                     userPicksByGame[String(event.id)] = String(pickedPlayerId);
@@ -203,7 +210,7 @@ permalink: /schedule/
                                         const pickCell = document.getElementById(`pick-${game.id}`);
                                         const pickCardCell = document.getElementById(`pick-card-${game.id}`);
                                         const pickChip = document.getElementById(`pick-chip-${game.id}`);
-                                        const playerName = player.athlete ? (player.athlete.shortName || player.athlete.displayName) : (playerMap[pickedPlayerId] || 'Unknown');
+                                        const playerName = player.athlete ? (player.athlete.shortName || player.athlete.displayName) : (playerMap[String(pickedPlayerId)] || playerMap[pickedPlayerId] || 'Unknown');
                                         const pickStr = `<strong>${escapeHtml(playerName)}</strong> (${val})`;
 
                                         if (pickCell) {
@@ -211,60 +218,57 @@ permalink: /schedule/
                                             pickCell.style.color = '';
                                             if (topPlayerId && String(pickedPlayerId) === String(topPlayerId)) {
                                                 pickCell.classList.add('correct-pick');
+                                            } else {
+                                                pickCell.classList.remove('correct-pick');
                                             }
                                         }
                                         if (pickCardCell) {
                                             pickCardCell.innerHTML = pickStr;
                                             if (topPlayerId && String(pickedPlayerId) === String(topPlayerId) && pickChip) {
                                                 pickChip.classList.add('correct-pick');
+                                            } else if (pickChip) {
+                                                pickChip.classList.remove('correct-pick');
                                             }
                                         }
+                                        pickHandledByVal = true;
                                     }
                                 }
                             }
                         }
                     }
 
-                    // Handle Pick Name (if not already handled by VAL update or if game not complete)
-                    const isPreGame = game.status?.type?.state === 'pre' || !game.status?.type?.completed;
-                    if (pickDoc && pickDoc.exists) {
-                        const pickedPlayerId = pickDoc.data()[USER_UID];
-                        if (pickedPlayerId) {
-                            userPicksByGame[String(event.id)] = String(pickedPlayerId);
-                            const pickCell = document.getElementById(`pick-${game.id}`);
-                            const pickCardCell = document.getElementById(`pick-card-${game.id}`);
-                            if (pickCell && (pickCell.textContent === '-' || pickCell.textContent === '')) {
-                                const playerName = playerMap[pickedPlayerId] || 'Unknown';
-                                const valDisplay = (game.status?.type?.state === 'post') ? ' (0)' : '';
-                                const pickNameStr = isPreGame 
-                                    ? `<span class="badge-pick-saved">✓ ${escapeHtml(playerName)}</span>`
-                                    : `<strong>${escapeHtml(playerName)}</strong>${valDisplay}`;
-                                pickCell.innerHTML = pickNameStr;
-                                pickCell.style.color = '';
-                                if (pickCardCell) {
-                                    pickCardCell.innerHTML = pickNameStr;
-                                }
-                            }
-                        } else if (isPreGame) {
-                            const pickCell = document.getElementById(`pick-${game.id}`);
-                            const pickCardCell = document.getElementById(`pick-card-${game.id}`);
-                            const neededHtml = `<span class="badge-pick-needed">Pick Needed &rarr;</span>`;
-                            if (pickCell && (pickCell.textContent === '-' || pickCell.textContent === '')) {
-                                pickCell.innerHTML = neededHtml;
-                            }
-                            if (pickCardCell && (pickCardCell.textContent === '-' || pickCardCell.textContent === '')) {
-                                pickCardCell.innerHTML = neededHtml;
-                            }
-                        }
-                    } else if (isPreGame) {
+                    // Handle Pick Name (for pre-game, live, or post-game where VAL was not calculated above)
+                    if (!pickHandledByVal) {
+                        const isPreGame = game.status?.type?.state === 'pre' || !game.status?.type?.completed;
                         const pickCell = document.getElementById(`pick-${game.id}`);
                         const pickCardCell = document.getElementById(`pick-card-${game.id}`);
-                        const neededHtml = `<span class="badge-pick-needed">Pick Needed &rarr;</span>`;
-                        if (pickCell && (pickCell.textContent === '-' || pickCell.textContent === '')) {
-                            pickCell.innerHTML = neededHtml;
-                        }
-                        if (pickCardCell && (pickCardCell.textContent === '-' || pickCardCell.textContent === '')) {
-                            pickCardCell.innerHTML = neededHtml;
+                        const pickChip = document.getElementById(`pick-chip-${game.id}`);
+                        if (pickChip) pickChip.classList.remove('correct-pick');
+                        if (pickCell) pickCell.classList.remove('correct-pick');
+
+                        const pickedPlayerId = (pickDoc && pickDoc.exists && USER_UID) ? pickDoc.data()[USER_UID] : null;
+                        if (pickedPlayerId) {
+                            userPicksByGame[String(event.id)] = String(pickedPlayerId);
+                            const playerName = playerMap[String(pickedPlayerId)] || playerMap[pickedPlayerId] || `Player #${pickedPlayerId}`;
+                            const valDisplay = (game.status?.type?.state === 'post') ? ' (0)' : '';
+                            const pickNameStr = isPreGame 
+                                ? `<span class="badge-pick-saved">✓ ${escapeHtml(playerName)}</span>`
+                                : `<strong>${escapeHtml(playerName)}</strong>${valDisplay}`;
+                            if (pickCell) {
+                                pickCell.innerHTML = pickNameStr;
+                                pickCell.style.color = '';
+                            }
+                            if (pickCardCell) {
+                                pickCardCell.innerHTML = pickNameStr;
+                            }
+                        } else if (isPreGame && USER_UID) {
+                            const neededHtml = `<span class="badge-pick-needed">Pick Needed &rarr;</span>`;
+                            if (pickCell) {
+                                pickCell.innerHTML = neededHtml;
+                            }
+                            if (pickCardCell) {
+                                pickCardCell.innerHTML = neededHtml;
+                            }
                         }
                     }
                 }).catch(err => {
@@ -312,12 +316,19 @@ permalink: /schedule/
 
         if (typeof auth !== 'undefined' && auth) {
             auth.onAuthStateChanged(user => {
-                if (user && user.uid !== USER_UID) {
+                if (user) {
+                    const wasDifferent = (user.uid !== USER_UID);
                     USER_UID = user.uid;
-                    if (allScheduleEvents.length > 0) {
+                    if (wasDifferent && allScheduleEvents.length > 0) {
                         loadGameDetailsAndPicks(allScheduleEvents);
                     }
                 }
             });
         }
+
+        window.addEventListener('pageshow', () => {
+            if (allScheduleEvents.length > 0 && USER_UID) {
+                loadGameDetailsAndPicks(allScheduleEvents);
+            }
+        });
     </script>
