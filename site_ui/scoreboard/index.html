@@ -1299,7 +1299,7 @@ permalink: /scoreboard/
               return a.name.localeCompare(b.name);
           });
 
-          const summaryPreview = `${submittedCount}/${members.length} Picks Submitted · 🔒 Locks at Tip-off`;
+          const summaryPreview = `${submittedCount}/${members.length} Picks · 🔒 Tip-off`;
 
           if (isCollapsed) {
               return `
@@ -1308,8 +1308,10 @@ permalink: /scoreboard/
                   <div class="sb-group-collapsed-bar" onclick="toggleScoreboardGroupCollapse('${escapeHtml(activeGroup.id)}')">
                     <div class="sb-group-collapsed-left">
                       <span class="sb-group-collapsed-icon">👥</span>
-                      <span class="sb-group-collapsed-title">${escapeHtml(activeGroup.name)}</span>
-                      <span class="sb-group-collapsed-preview">${summaryPreview}</span>
+                      <div class="sb-group-collapsed-text">
+                        <span class="sb-group-collapsed-title">${escapeHtml(activeGroup.name)}</span>
+                        <span class="sb-group-collapsed-preview">${summaryPreview}</span>
+                      </div>
                     </div>
                     <button type="button" class="sb-group-toggle-btn" aria-label="Expand">Expand ▾</button>
                   </div>
@@ -1425,8 +1427,10 @@ permalink: /scoreboard/
               <div class="sb-group-collapsed-bar" onclick="toggleScoreboardGroupCollapse('${escapeHtml(activeGroup.id)}')">
                 <div class="sb-group-collapsed-left">
                   <span class="sb-group-collapsed-icon">🏆</span>
-                  <span class="sb-group-collapsed-title">${escapeHtml(activeGroup.name)}</span>
-                  <span class="sb-group-collapsed-preview">${summaryPreview}</span>
+                  <div class="sb-group-collapsed-text">
+                    <span class="sb-group-collapsed-title">${escapeHtml(activeGroup.name)}</span>
+                    <span class="sb-group-collapsed-preview">${summaryPreview}</span>
+                  </div>
                 </div>
                 <button type="button" class="sb-group-toggle-btn" aria-label="Expand">Expand ▾</button>
               </div>

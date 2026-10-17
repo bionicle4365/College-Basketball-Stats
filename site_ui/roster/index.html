@@ -77,7 +77,7 @@ permalink: /roster/
                 const safeJersey = player.jersey ? escapeHtml(player.jersey) : '';
                 
                 html += `<tr class="player-row" data-player-id="${playerId}" style="cursor: pointer;">
-                    <td><img src="${img}" class="headshot"><strong>${safeName}</strong> <span style="color:#888; font-size:0.8em">#${safeJersey}</span><span class="expand-chevron">▸</span></td>
+                    <td><div class="roster-player-cell"><img src="${img}" class="headshot"><strong>${safeName}</strong> <span style="color:#888; font-size:0.8em">#${safeJersey}</span><span class="expand-chevron">▸</span></div></td>
                     ${stats.map((s, idx) => {
                         const hideClass = (headers[idx] === 'Weight' || headers[idx] === 'Birthplace') ? ' class="col-hide-mobile"' : '';
                         return `<td${hideClass}>${escapeHtml(s)}</td>`;

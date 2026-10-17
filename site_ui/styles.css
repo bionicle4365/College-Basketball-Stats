@@ -1,8 +1,25 @@
-body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f6f8fa; }
+html, body { 
+    margin: 0; 
+    padding: 0;
+    max-width: 100vw;
+    overflow-x: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+    background-color: #f6f8fa; 
+    box-sizing: border-box;
+}
+*, *::before, *::after {
+    box-sizing: inherit;
+}
 .site-header { position: relative; z-index: 1000; background: #333; color: white; padding: 0.85rem 1rem; display: flex; justify-content: space-between; align-items: center; }
 .header-left { display: flex; align-items: center; gap: 14px; }
 .site-title { color: white; text-decoration: none; font-weight: bold; font-size: 1.2rem; white-space: nowrap; }
 .user-dropdown { position: relative; display: none;}
+.user-team-logo {
+    width: 2.5rem;
+    height: 2.5rem;
+    margin-right: 8px;
+    object-fit: contain;
+}
 .username-btn { background: none; border: none; color: white; font-weight: bold; cursor: pointer; font-size: 1rem; padding: 0.5rem; display: flex; align-items: center; }
 .username-btn::after { content: " ▼"; font-size: 0.7em; margin-left: 5px; }
 
@@ -93,10 +110,14 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Ro
 }
 
 @media (max-width: 480px) {
-    .header-left { gap: 8px; }
+    .site-header { padding: 0.6rem 0.75rem; }
+    .header-left { gap: 6px; }
+    .site-title { font-size: 1.05rem; }
     .league-label-full { display: none; }
     .league-label-short { display: inline; }
-    .league-toggle-btn { padding: 4px 8px; font-size: 0.76rem; }
+    .league-toggle-btn { padding: 4px 7px; font-size: 0.74rem; }
+    .user-team-logo { width: 30px !important; height: 30px !important; margin-right: 6px !important; }
+    .username-btn { max-width: 85px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.82rem; padding: 4px 6px; }
 }
 
 /* Dark Mode Styles */
@@ -670,8 +691,10 @@ body.dark-mode .stats-table tr.picked-row td.col-player {
     font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, Courier, monospace;
     font-size: 0.82rem;
     color: #1e293b;
-    white-space: nowrap;
+    white-space: normal;
+    line-height: 1.55;
     display: block;
+    word-break: break-word;
 }
 
 .val-section-title {
@@ -1201,11 +1224,33 @@ body.dark-mode .schedule-card-chip.correct-pick {
         display: none !important;
     }
     .roster-table th, .roster-table td {
-        padding: 9px 6px;
+        padding: 8px 4px;
+        font-size: 0.84rem;
+    }
+    .roster-table th:nth-child(2), .roster-table td:nth-child(2) {
+        width: 32px;
+        text-align: center;
+    }
+    .roster-table th:nth-child(3), .roster-table td:nth-child(3) {
+        width: 48px;
+        text-align: center;
+    }
+    .roster-table th:nth-child(4), .roster-table td:nth-child(4) {
+        width: 38px;
+        text-align: center;
+    }
+    .roster-table td:first-child {
+        white-space: nowrap;
+    }
+    .roster-player-cell {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        white-space: nowrap;
     }
     .headshot {
-        width: 34px;
-        height: 34px;
+        width: 30px;
+        height: 30px;
         margin-right: 6px;
     }
 }
@@ -1257,8 +1302,60 @@ body.dark-mode .schedule-card-chip.correct-pick {
     }
 }
 
-/* 9. Groups Page Form on Mobile */
+/* 9. Mobile Responsive Containers, Tables, Forms, and Modals */
 @media (max-width: 600px) {
+    /* Responsive Containers & Outer Padding */
+    .groups-container,
+    .roster-container,
+    .schedule-container,
+    .standings-container,
+    .settings-container {
+        margin: 10px auto;
+        padding: 14px 10px;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        border-radius: 6px;
+    }
+    .login-container {
+        width: 92%;
+        max-width: 380px;
+        margin: 20px auto;
+        padding: 1.5rem 1.2rem;
+        box-sizing: border-box;
+    }
+
+    /* Standings Table Mobile Fit */
+    .standings-table th, .standings-table td {
+        padding: 8px 4px;
+        font-size: 0.85rem;
+    }
+    .standings-table th:first-child, .standings-table td:first-child {
+        width: 34px;
+        text-align: center;
+        padding-left: 2px;
+    }
+    .standings-table th:nth-child(2), .standings-table td:nth-child(2) {
+        max-width: 175px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .standings-table th:nth-child(3), .standings-table td:nth-child(3) {
+        width: 48px;
+        text-align: center;
+    }
+    .standings-table th:nth-child(4), .standings-table td:nth-child(4) {
+        width: 52px;
+        text-align: center;
+    }
+    .standings-table .team-logo {
+        width: 20px;
+        height: 20px;
+        margin-right: 4px;
+    }
+
+    /* Groups Page Form on Mobile */
     .groups-container .input-group {
         flex-direction: column;
         align-items: stretch;
@@ -1304,8 +1401,60 @@ body.dark-mode .schedule-card-chip.correct-pick {
     .leaderboard-table th:nth-child(5),
     .leaderboard-table td:nth-child(5),
     .leaderboard-table th:nth-child(6),
-    .leaderboard-table td:nth-child(6) {
+    .leaderboard-table td:nth-child(6),
+    .leaderboard-table th:nth-child(8),
+    .leaderboard-table td:nth-child(8) {
         display: none;
+    }
+    .trend-container .trend-pill:nth-child(n+3) {
+        display: none;
+    }
+    .leaderboard-table th, .leaderboard-table td {
+        padding: 8px 4px;
+        font-size: 0.85rem;
+    }
+
+    /* Game Matrix Table Sticky Column on Mobile */
+    .game-matrix-table th:first-child,
+    .game-matrix-table td:first-child {
+        position: sticky;
+        left: 0;
+        background-color: #ffffff;
+        z-index: 2;
+        border-right: 2px solid #ddd;
+        min-width: 115px;
+        max-width: 130px;
+        font-size: 0.8rem;
+        padding: 6px 4px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .game-matrix-table thead th:first-child {
+        z-index: 3;
+        background-color: #f8f9fa;
+    }
+    body.dark-mode .game-matrix-table td:first-child {
+        background-color: #1e1e1e !important;
+        border-right-color: #444;
+    }
+    body.dark-mode .game-matrix-table thead th:first-child {
+        background-color: #2d2d2d !important;
+        border-right-color: #444;
+    }
+    .game-matrix-table th, .game-matrix-table td {
+        padding: 6px 6px;
+        font-size: 0.8rem;
+    }
+
+    /* Modal Sizing on Mobile */
+    .modal-box,
+    .val-formula-modal-box,
+    .val-breakdown-modal-box {
+        width: 95% !important;
+        max-width: 95vw !important;
+        padding: 16px 12px !important;
+        box-sizing: border-box;
     }
 }
 
@@ -1683,6 +1832,14 @@ body.dark-mode .option-cooldown {
     white-space: nowrap;
     text-overflow: ellipsis;
     font-size: 0.88rem;
+}
+.sb-group-collapsed-text {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
 }
 .sb-group-collapsed-icon {
     font-size: 1.1rem;
@@ -2239,9 +2396,14 @@ body.dark-mode .pick-val-explainer {
     }
 
     /* Scoreboard Linescore & Last Play */
+    .linescore-table th, .linescore-table td {
+        padding: 6px 6px;
+        font-size: 0.82rem;
+    }
     .linescore-table th.col-total,
     .linescore-table td.col-total {
-        display: none;
+        display: table-cell;
+        padding-right: 8px;
     }
     .last-play-card {
         padding: 8px 10px;
@@ -2253,6 +2415,35 @@ body.dark-mode .pick-val-explainer {
     .scoreboard-group-widget {
         margin: 10px auto;
         border-radius: 6px;
+    }
+    .sb-group-collapsed-left {
+        gap: 8px;
+        min-width: 0;
+        flex: 1;
+        overflow: hidden;
+    }
+    .sb-group-collapsed-text {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+        min-width: 0;
+        flex: 1;
+        overflow: hidden;
+    }
+    .sb-group-collapsed-title {
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-size: 0.88rem;
+    }
+    .sb-group-collapsed-preview {
+        font-size: 0.76rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 100%;
     }
     .sb-group-header {
         padding: 8px 12px;
@@ -2344,8 +2535,8 @@ body.dark-mode .pick-val-explainer {
     .stats-table th.col-player,
     .stats-table td.col-player {
         left: 36px;
-        min-width: 105px;
-        max-width: 115px;
+        min-width: 120px;
+        max-width: 135px;
         padding: 6px 4px;
         font-size: 0.82rem;
     }
