@@ -1,11 +1,30 @@
-html, body { 
+html { 
+    min-height: 100%;
+    background-color: #f6f8fa;
+}
+html.dark-mode,
+html:has(body.dark-mode) {
+    background-color: #121212 !important;
+}
+body { 
     margin: 0; 
     padding: 0;
+    min-height: 100vh;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
     max-width: 100vw;
     overflow-x: hidden;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
     background-color: #f6f8fa; 
     box-sizing: border-box;
+}
+body.dark-mode {
+    background-color: #121212 !important;
+    color: #e0e0e0;
+}
+#content {
+    flex: 1 0 auto;
 }
 *, *::before, *::after {
     box-sizing: inherit;
@@ -121,14 +140,21 @@ html, body {
 }
 
 /* Dark Mode Styles */
-body.dark-mode { background-color: #121212; color: #e0e0e0; }
+html.dark-mode,
+html:has(body.dark-mode),
+body.dark-mode { 
+    background-color: #121212 !important; 
+    color: #e0e0e0; 
+}
 body.dark-mode .groups-container, 
 body.dark-mode .schedule-container, 
 body.dark-mode .stats-container,
 body.dark-mode .roster-container,
+body.dark-mode .standings-container,
 body.dark-mode .settings-container,
 body.dark-mode .game-card,
 body.dark-mode .dropdown-content,
+body.dark-mode .pick-container,
 body.dark-mode #teams-dropdown,
 body.dark-mode #team-selector { 
     background-color: #1e1e1e !important; 

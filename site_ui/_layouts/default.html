@@ -21,6 +21,23 @@
     <script src="{{ site.baseurl }}/common.js?v={{ site.time | date: '%s' }}"></script>
     {% endif %}
     <script src="{{ site.baseurl }}/helpers.js?v={{ site.time | date: '%s' }}"></script>
+    <script>
+        (function() {
+            try {
+                const params = new URLSearchParams(window.location.search);
+                const darkParam = params.get('dark');
+                if (darkParam === 'true' || darkParam === '1') {
+                    localStorage.setItem('darkMode', 'true');
+                } else if (darkParam === 'false' || darkParam === '0') {
+                    localStorage.setItem('darkMode', 'false');
+                }
+                const storedDarkMode = localStorage.getItem('darkMode');
+                if (storedDarkMode === 'true' || (storedDarkMode === null && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                    document.documentElement.classList.add('dark-mode');
+                }
+            } catch (e) {}
+        })();
+    </script>
 </head>
 <body>
     <header class="site-header">
@@ -80,10 +97,18 @@
             localStorage.setItem('league', urlLeague);
         }
         
-        // Initialize Dark Mode
+        // Initialize Dark Mode (supports ?dark=true URL param or localStorage)
+        const darkParam = layoutUrlParams.get('dark');
+        if (darkParam === 'true' || darkParam === '1') {
+            localStorage.setItem('darkMode', 'true');
+        } else if (darkParam === 'false' || darkParam === '0') {
+            localStorage.setItem('darkMode', 'false');
+        }
         const storedDarkMode = localStorage.getItem('darkMode');
-        if (storedDarkMode === 'true' || (storedDarkMode === null && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        const isDark = storedDarkMode === 'true' || (storedDarkMode === null && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if (isDark) {
             document.body.classList.add('dark-mode');
+            document.documentElement.classList.add('dark-mode');
         }
 
         updateLeagueToggleUI(currentLeague);
@@ -140,10 +165,13 @@
         }
 
         function toggleDarkMode() {
-            document.body.classList.toggle('dark-mode');
-            const isDark = document.body.classList.contains('dark-mode');
-            localStorage.setItem('darkMode', isDark);
-            document.getElementById('dark-mode-toggle').textContent = isDark ? 'Dark Mode: On' : 'Dark Mode: Off';
+            const isDarkActive = document.body.classList.toggle('dark-mode');
+            document.documentElement.classList.toggle('dark-mode', isDarkActive);
+            localStorage.setItem('darkMode', isDarkActive);
+            const toggleBtn = document.getElementById('dark-mode-toggle');
+            if (toggleBtn) {
+                toggleBtn.textContent = isDarkActive ? 'Dark Mode: On' : 'Dark Mode: Off';
+            }
         }
 
         function toggleDropdown(id) {
