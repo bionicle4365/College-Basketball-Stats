@@ -618,6 +618,7 @@ permalink: /scoreboard/
                           shortDisplayName: 'North Carolina',
                           abbreviation: 'UNC',
                           nickname: 'Tar Heels',
+                          color: '7BAFD4',
                           logos: [
                               { href: 'https://a.espncdn.com/i/teamlogos/ncaa/500/153.png' }
                           ]
@@ -643,6 +644,7 @@ permalink: /scoreboard/
                           shortDisplayName: 'NC State',
                           abbreviation: 'NCST',
                           nickname: 'Wolfpack',
+                          color: 'CC0000',
                           logos: [
                               { href: 'https://a.espncdn.com/i/teamlogos/ncaa/500/152.png' }
                           ]
@@ -658,6 +660,12 @@ permalink: /scoreboard/
 
       const mockSummary = {
           header: mockEvent,
+          winprobability: [
+              { homeWinPercentage: 0.50, tiePercentage: 0.0 },
+              { homeWinPercentage: 0.55, tiePercentage: 0.0 },
+              { homeWinPercentage: 0.62, tiePercentage: 0.0 },
+              { homeWinPercentage: 0.684, tiePercentage: 0.0 }
+          ],
           plays: [
               {
                   clock: { displayValue: '8:44' },
@@ -1158,6 +1166,67 @@ permalink: /scoreboard/
       `;
   }
 
+  function renderWinProbability(summaryData, awayTeam, homeTeam, state) {
+      if (!summaryData || !summaryData.winprobability || !Array.isArray(summaryData.winprobability) || summaryData.winprobability.length === 0) {
+          return '';
+      }
+
+      const latest = summaryData.winprobability[summaryData.winprobability.length - 1];
+      if (!latest || typeof latest.homeWinPercentage !== 'number' || isNaN(latest.homeWinPercentage)) {
+          return '';
+      }
+
+      // Clamp home win percentage between 0 and 1
+      const clampedHome = Math.max(0, Math.min(1, latest.homeWinPercentage));
+      const homePct = Math.round(clampedHome * 1000) / 10;
+      const awayPct = Math.round((1 - clampedHome) * 1000) / 10;
+
+      const awayAbbr = escapeHtml(awayTeam.team.abbreviation || awayTeam.team.shortDisplayName || awayTeam.team.name || 'Away');
+      const homeAbbr = escapeHtml(homeTeam.team.abbreviation || homeTeam.team.shortDisplayName || homeTeam.team.name || 'Home');
+
+      const formatColor = (hex, fallback) => {
+          if (!hex) return fallback;
+          const clean = String(hex).replace(/[^0-9a-fA-F]/g, '');
+          return (clean.length === 6 || clean.length === 3) ? `#${clean}` : fallback;
+      };
+
+      const awayColor = formatColor(awayTeam.team.color, '#2563eb');
+      const homeColor = formatColor(homeTeam.team.color, '#cc0000');
+
+      const isLive = state === 'in';
+      const labelText = isLive ? 'Live Win Probability' : 'Win Probability';
+
+      const isAwayFavored = awayPct > homePct;
+      const isHomeFavored = homePct > awayPct;
+      const thumbBorderColor = isHomeFavored ? homeColor : (isAwayFavored ? awayColor : '#888888');
+
+      return `
+        <div class="win-prob-wrapper" aria-label="Win Probability: ${awayAbbr} ${awayPct}%, ${homeAbbr} ${homePct}%">
+          <div class="win-prob-header">
+            <div class="win-prob-team away-team ${isAwayFavored ? 'favored' : ''}">
+              <span class="win-prob-name">${awayAbbr}</span>
+              <span class="win-prob-val">${awayPct}%</span>
+            </div>
+            <div class="win-prob-center">
+              <span class="win-prob-label">${labelText}</span>
+            </div>
+            <div class="win-prob-team home-team ${isHomeFavored ? 'favored' : ''}">
+              <span class="win-prob-val">${homePct}%</span>
+              <span class="win-prob-name">${homeAbbr}</span>
+            </div>
+          </div>
+          <div class="win-prob-track-outer" title="Win Probability: ${awayAbbr} ${awayPct}% - ${homeAbbr} ${homePct}%">
+            <div class="win-prob-track">
+              <div class="win-prob-fill away-fill" style="width: ${awayPct}%; background-color: ${awayColor};" title="${awayAbbr}: ${awayPct}%"></div>
+              <div class="win-prob-fill home-fill" style="width: ${homePct}%; background-color: ${homeColor};" title="${homeAbbr}: ${homePct}%"></div>
+            </div>
+            <div class="win-prob-center-tick" title="50% Toss-Up Line"></div>
+            <div class="win-prob-thumb" style="left: ${awayPct}%; border-color: ${thumbBorderColor};" title="${isHomeFavored ? homeAbbr : (isAwayFavored ? awayAbbr : 'Tied')} ${Math.max(homePct, awayPct)}%"></div>
+          </div>
+        </div>
+      `;
+  }
+
   function buildPlayerValMap(summary, rosterData) {
       const map = {};
       const athletes = rosterData?.athletes || rosterData?.team?.athletes || [];
@@ -1550,6 +1619,9 @@ permalink: /scoreboard/
     // Linescores
     const linescoreHtml = (summaryData && (awayTeam.linescores || homeTeam.linescores)) ? renderLinescores(awayTeam, homeTeam) : '';
 
+    // Win Probability Slider
+    const winProbHtml = renderWinProbability(summaryData, awayTeam, homeTeam, state);
+
     // Last Play / Situation
     let lastPlayHtml = '';
     if (summaryData && summaryData.plays && summaryData.plays.length > 0) {
@@ -1586,6 +1658,7 @@ permalink: /scoreboard/
           ${!isPre ? `<div class="team-score">${homeTeam.score || 0}</div>` : ''}
         </div>
       </div>
+      ${winProbHtml}
       ${linescoreHtml}
       ${lastPlayHtml}
       ${nextGameHtml}
