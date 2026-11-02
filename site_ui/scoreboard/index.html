@@ -569,6 +569,12 @@ permalink: /scoreboard/
   }
 
   function startLivePolling(type) {
+      const banner = document.getElementById('game-banner');
+      if (banner) banner.style.display = 'none';
+      if (typeof bannerCountdownInterval !== 'undefined' && bannerCountdownInterval) {
+          clearInterval(bannerCountdownInterval);
+          bannerCountdownInterval = null;
+      }
       if (!livePollInterval) {
           livePollInterval = setInterval(() => {
               loadStats(type, true);
@@ -872,6 +878,8 @@ permalink: /scoreboard/
               </div>`;
         }
         if (mockFooter) mockFooter.style.display = 'none';
+        const banner = document.getElementById('game-banner');
+        if (banner) banner.style.display = 'none';
 
         stopLivePolling();
         USER_UID = 'mock-user-123';
@@ -965,6 +973,12 @@ permalink: /scoreboard/
         fetch(summaryUrl).then(r => r.json()).then(summary => {
             const state = summary.header.competitions[0].status.type.state;
             if (state === 'in') {
+                const banner = document.getElementById('game-banner');
+                if (banner) banner.style.display = 'none';
+                if (typeof bannerCountdownInterval !== 'undefined' && bannerCountdownInterval) {
+                    clearInterval(bannerCountdownInterval);
+                    bannerCountdownInterval = null;
+                }
                 startLivePolling(type);
             } else {
                 stopLivePolling();

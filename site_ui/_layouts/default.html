@@ -355,6 +355,13 @@
             if (localStorage.getItem('isLoggedIn') !== 'true') return;
 
             async function checkUpcomingGames() {
+                const isMockLive = new URLSearchParams(window.location.search).get('mock') === 'live' || new URLSearchParams(window.location.search).get('demo') === 'live';
+                if (isMockLive) {
+                    const banner = document.getElementById('game-banner');
+                    if (banner) banner.style.display = 'none';
+                    return;
+                }
+
                 const now = new Date();
                 const currentLg = localStorage.getItem('league') || 'mens';
                 const leagues = currentLg === 'womens' ? ['womens', 'mens'] : ['mens', 'womens'];
@@ -365,6 +372,34 @@
                     try {
                         const data = await fetchTeamSchedule(sportPath, FAV_TEAM_ID);
                         if (data && data.events) {
+                            // Check if there is a game currently being played by that team
+                            const hasGameInProgress = data.events.some(e => {
+                                const statusObj = e.competitions?.[0]?.status?.type || e.status?.type;
+                                const state = statusObj?.state;
+                                const isCompleted = statusObj?.completed ?? (state === 'post');
+                                if (isCompleted || state === 'post') return false;
+                                const statusName = statusObj?.name || '';
+                                if (statusName.includes('POSTPONED') || statusName.includes('CANCEL')) return false;
+                                if (state === 'in') return true;
+                                if (e.date) {
+                                    const gameDate = new Date(e.date);
+                                    const elapsed = now - gameDate;
+                                    // Scheduled tip-off has occurred within normal game duration (3.5 hours) and not finished
+                                    if (elapsed >= 0 && elapsed < 3.5 * 60 * 60 * 1000) {
+                                        return true;
+                                    }
+                                }
+                                return false;
+                            });
+
+                            if (hasGameInProgress) {
+                                if (league === currentLg) {
+                                    upcomingGames = [];
+                                    break;
+                                }
+                                continue;
+                            }
+
                             const futureGames = data.events.filter(e => {
                                 const gameDate = new Date(e.date);
                                 const state = e.competitions?.[0]?.status?.type?.state;
@@ -454,11 +489,12 @@
                         }
                         const diff = target.date.getTime() - Date.now();
                         if (diff <= 0) {
-                            digitsEl.textContent = '🔒 Starting now!';
                             if (bannerCountdownInterval) {
                                 clearInterval(bannerCountdownInterval);
                                 bannerCountdownInterval = null;
                             }
+                            const banner = document.getElementById('game-banner');
+                            if (banner) banner.style.display = 'none';
                             return;
                         }
 
@@ -477,6 +513,13 @@
                     updateBannerTimer();
                     if (bannerCountdownInterval) clearInterval(bannerCountdownInterval);
                     bannerCountdownInterval = setInterval(updateBannerTimer, 1000);
+                } else {
+                    const banner = document.getElementById('game-banner');
+                    if (banner) banner.style.display = 'none';
+                    if (bannerCountdownInterval) {
+                        clearInterval(bannerCountdownInterval);
+                        bannerCountdownInterval = null;
+                    }
                 }
             }
             checkUpcomingGames();
