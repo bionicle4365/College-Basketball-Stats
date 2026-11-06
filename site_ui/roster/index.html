@@ -5,9 +5,104 @@ permalink: /roster/
 ---
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <div class="roster-container">
-        <h2 id="team-name">Team Roster & Stats</h2>
+        <div class="roster-header-bar">
+            <div>
+                <h2 id="team-name" style="margin: 0;">Team Roster &amp; Pick'em Research</h2>
+                <p class="roster-subtitle">Tap any column header to sort, or tap a player to inspect their VAL trend, consistency, and recent game log.</p>
+            </div>
+            <button type="button" class="val-formula-pill-btn" onclick="showValFormulaModal(event)">
+                <span>ℹ️</span>
+                <span>How is VAL calculated?</span>
+            </button>
+        </div>
+
         <div id="player-content" style="overflow-x: auto;">
             <div class="loading">Loading players...</div>
+        </div>
+    </div>
+
+    <!-- Player VAL Breakdown Modal -->
+    <div id="val-modal" class="modal-overlay" onclick="closeValModal(event)">
+        <div class="modal-box val-formula-modal-box val-breakdown-modal-box">
+            <span class="modal-close" onclick="closeValModal(event)">&times;</span>
+            <div id="val-modal-body" class="val-formula-content"></div>
+        </div>
+    </div>
+
+    <!-- VAL Formula Explanation Modal -->
+    <div id="val-formula-modal" class="modal-overlay" onclick="closeValFormulaModal(event)">
+        <div class="modal-box val-formula-modal-box">
+            <span class="modal-close" onclick="closeValFormulaModal(event)">&times;</span>
+            <div id="val-formula-content" class="val-formula-content">
+                <div class="val-formula-header">
+                    <h3>VAL (Value Rating) Formula</h3>
+                    <span class="val-source-pill">ESPN Fantasy Standard</span>
+                </div>
+                <p class="val-intro-text">
+                    VAL is a composite efficiency metric that quantifies a player's total single-game impact for your Pick'em matchups. It rewards efficiency and defensive impact while penalizing missed shots and turnovers.
+                </p>
+                
+                <div class="val-formula-math-box">
+                    <code>VAL = PTS + 3PM - FGA + (2 × FGM) - FTA + FTM + REB + (2 × AST) + (4 × STL) + (4 × BLK) - (2 × TO)</code>
+                </div>
+
+                <div class="val-section-title">Net Impact Per Action</div>
+                <div class="val-cards-grid">
+                    <div class="val-card val-positive">
+                        <span class="val-card-val">+5</span>
+                        <div class="val-card-desc">
+                            <strong>3-Point Made</strong>
+                            <small>+3 PTS, +1 3PM, +2 FGM, -1 FGA</small>
+                        </div>
+                    </div>
+                    <div class="val-card val-positive">
+                        <span class="val-card-val">+4</span>
+                        <div class="val-card-desc">
+                            <strong>Steal / Block</strong>
+                            <small>High-impact defensive stops</small>
+                        </div>
+                    </div>
+                    <div class="val-card val-positive">
+                        <span class="val-card-val">+3</span>
+                        <div class="val-card-desc">
+                            <strong>2-Point Made</strong>
+                            <small>+2 PTS, +2 FGM, -1 FGA</small>
+                        </div>
+                    </div>
+                    <div class="val-card val-positive">
+                        <span class="val-card-val">+2</span>
+                        <div class="val-card-desc">
+                            <strong>Assist</strong>
+                            <small>Playmaking &amp; creation</small>
+                        </div>
+                    </div>
+                    <div class="val-card val-neutral">
+                        <span class="val-card-val">+1</span>
+                        <div class="val-card-desc">
+                            <strong>Rebound / FT Made</strong>
+                            <small>+1 board | +1 made FT</small>
+                        </div>
+                    </div>
+                    <div class="val-card val-negative">
+                        <span class="val-card-val">-1</span>
+                        <div class="val-card-desc">
+                            <strong>Missed Shot</strong>
+                            <small>-1 per missed FG or FT</small>
+                        </div>
+                    </div>
+                    <div class="val-card val-negative">
+                        <span class="val-card-val">-2</span>
+                        <div class="val-card-desc">
+                            <strong>Turnover</strong>
+                            <small>Lost possession penalty</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="val-footer-note">
+                    💡 <em>Tip: Expand any player row and tap a game's <strong>VAL</strong> pill in their Recent Games log to see their exact point-by-point breakdown.</em>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -16,77 +111,248 @@ permalink: /roster/
 
         const { teamId: TEAM_ID, league: LEAGUE, sportPath: SPORT_PATH } = getAppContext();
         const chartInstances = {};
-
+        const playerGamelogCache = {};
+        const playerSummaryStats = {};
+        let rosterAthletes = [];
         let teamSchedule = [];
-        fetchTeamSchedule(SPORT_PATH, TEAM_ID)
+        let scheduleById = {};
+        let currentSort = { key: 'avgVal', dir: 'desc' };
+        let userHasSortedOrExpanded = false;
+        const GAMELOG_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+        const CLASS_ORDER = { 'FR': 1, 'SO': 2, 'JR': 3, 'SR': 4, 'GR': 5 };
+
+        function showValBreakdown(target) {
+            const element = (target && target.nodeType) ? target : (target && target.currentTarget ? target.currentTarget : null);
+            if (!element) return;
+
+            let details = null;
+            const detailsJson = element.getAttribute('data-val-details');
+            if (detailsJson) {
+                try {
+                    details = JSON.parse(detailsJson);
+                } catch (e) {
+                    details = null;
+                }
+            }
+            if (details) {
+                const playerName = element.getAttribute('data-player-name') || 'Player VAL Breakdown';
+                const playerSub = element.getAttribute('data-player-sub') || '';
+                const bodyEl = document.getElementById('val-modal-body');
+                bodyEl.innerHTML = renderValBreakdownHtml(details, playerName, playerSub);
+                document.getElementById('val-modal').style.display = 'flex';
+            }
+        }
+
+        function openFormulaFromBreakdown() {
+            document.getElementById('val-modal').style.display = 'none';
+            showValFormulaModal();
+        }
+
+        function showValFormulaModal(event) {
+            if (event && event.stopPropagation) event.stopPropagation();
+            document.getElementById('val-formula-modal').style.display = 'flex';
+        }
+
+        function closeValFormulaModal(event) {
+            if (!event || event.target.id === 'val-formula-modal' || event.target.classList.contains('modal-close')) {
+                document.getElementById('val-formula-modal').style.display = 'none';
+            }
+        }
+
+        function closeValModal(event) {
+            if (!event || event.target.id === 'val-modal' || event.target.classList.contains('modal-close')) {
+                document.getElementById('val-modal').style.display = 'none';
+            }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                const valModal = document.getElementById('val-modal');
+                const formulaModal = document.getElementById('val-formula-modal');
+                if (valModal) valModal.style.display = 'none';
+                if (formulaModal) formulaModal.style.display = 'none';
+            }
+        });
+
+        function parseHeightInches(displayHeight) {
+            if (!displayHeight) return 0;
+            const match = String(displayHeight).match(/(\d+)\s*'\s*(\d+)?/);
+            if (match) {
+                return (parseInt(match[1], 10) * 12) + (parseInt(match[2] || '0', 10));
+            }
+            return 0;
+        }
+
+        function buildScheduleMetadata(events) {
+            const list = [];
+            const map = {};
+            (events || []).forEach(e => {
+                const comp = e.competitions?.[0];
+                if (!comp?.status?.type?.completed) return;
+                const date = new Date(e.date || comp.date);
+                const label = date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
+                const myTeam = comp.competitors?.find(c => String(c.team?.id) === String(TEAM_ID));
+                const oppTeam = comp.competitors?.find(c => String(c.team?.id) !== String(TEAM_ID));
+                const isHome = myTeam?.homeAway === 'home';
+                const vsAt = isHome ? 'vs' : '@';
+                const oppName = oppTeam?.team?.shortDisplayName || oppTeam?.team?.displayName || oppTeam?.team?.abbreviation || 'Opponent';
+                const oppAbbrev = oppTeam?.team?.abbreviation || oppName;
+                const isWin = Boolean(myTeam?.winner);
+                const myScore = myTeam?.score?.displayValue ?? myTeam?.score ?? '';
+                const oppScore = oppTeam?.score?.displayValue ?? oppTeam?.score ?? '';
+                const scoreStr = (myScore !== '' && oppScore !== '') ? `${myScore}-${oppScore}` : '';
+                const resultStr = scoreStr ? `${isWin ? 'W' : 'L'} ${scoreStr}` : (isWin ? 'W' : 'L');
+
+                const item = {
+                    id: String(e.id),
+                    date,
+                    label,
+                    vsAt,
+                    oppName,
+                    oppAbbrev,
+                    opponentLogo: oppTeam?.team ? getTeamLogoHtml(oppTeam.team) : '',
+                    isWin,
+                    resultStr
+                };
+                list.push(item);
+                map[String(e.id)] = item;
+            });
+            list.sort((a, b) => a.date - b.date);
+            teamSchedule = list;
+            scheduleById = map;
+        }
+
+        // Load schedule and roster in parallel
+        const schedulePromise = fetchTeamSchedule(SPORT_PATH, TEAM_ID)
             .then(data => {
-                 if (data && data.events) {
-                    teamSchedule = data.events
-                        .filter(e => e.competitions?.[0]?.status?.type?.completed)
-                        .map(e => {
-                            const date = new Date(e.date);
-                            return {
-                                id: e.id,
-                                date: date,
-                                label: date.toLocaleDateString('en-US', {month:'numeric', day:'numeric'})
-                            };
-                        })
-                        .sort((a, b) => a.date - b.date);
+                if (data && data.events) {
+                    buildScheduleMetadata(data.events);
                 }
             })
             .catch(e => console.warn('Could not load team schedule for roster chart:', e));
 
-        // Fetch roster
-        fetchTeamRoster(SPORT_PATH, TEAM_ID)
-            .then(data => {
+        const rosterPromise = fetchTeamRoster(SPORT_PATH, TEAM_ID);
+
+        Promise.all([rosterPromise, schedulePromise])
+            .then(([data]) => {
                 if (!data) throw new Error('Failed to load roster data.');
                 const teamName = escapeHtml(data.team?.displayName || 'Team');
                 document.getElementById('team-name').textContent = teamName + ' Roster';
-                const athletes = data.athletes || data.team?.athletes || [];
-                renderTable(['Pos', 'Height', 'Weight', 'Class', 'Birthplace'], athletes, 'roster');
+                const athletes = (data.athletes || data.team?.athletes || []).filter(a => a && a.active !== false);
+                rosterAthletes = athletes;
+                renderTable(athletes);
+                preloadAllPlayerGamelogs(athletes);
             })
             .catch(e => {
                 console.error(e);
                 document.getElementById('player-content').innerHTML = '<p class="error">Error loading data.</p>';
             });
 
-        function renderTable(headers, data, type) {
-            let html = `<table class="roster-table"><thead><tr><th>Player</th>`;
-            headers.forEach(h => {
-                const hideClass = (h === 'Weight' || h === 'Birthplace') ? ' class="col-hide-mobile"' : '';
-                html += `<th${hideClass}>${escapeHtml(h)}</th>`;
+        function getSortIndicator(key) {
+            if (currentSort.key !== key) return '<span class="sort-indicator">↕</span>';
+            return `<span class="sort-indicator active">${currentSort.dir === 'asc' ? '↑' : '↓'}</span>`;
+        }
+
+        function formatStatCellContent(playerId) {
+            const summary = playerSummaryStats[playerId];
+            if (!summary) {
+                return {
+                    mpgHtml: '<span class="stat-loading-dots">···</span>',
+                    avgValHtml: '<span class="stat-loading-dots">···</span>',
+                    l3ValHtml: '<span class="stat-loading-dots">···</span>'
+                };
+            }
+            if (summary.gp === 0) {
+                return {
+                    mpgHtml: '<span class="stat-muted">-</span>',
+                    avgValHtml: '<span class="stat-muted">-</span>',
+                    l3ValHtml: '<span class="stat-muted">-</span>'
+                };
+            }
+
+            const avgValStr = summary.avgVal.toFixed(1);
+            const avgClass = summary.avgVal >= 15 ? 'val-pill-high' : (summary.avgVal >= 8 ? 'val-pill-mid' : 'val-pill-low');
+
+            const l3ValStr = summary.l3Val.toFixed(1);
+            let trendBadge = '';
+            if (summary.gp >= 3) {
+                const diff = summary.l3Val - summary.avgVal;
+                if (diff >= 3.0 && summary.l3Val >= 8) {
+                    trendBadge = ' <span class="trend-fire" title="Hot: L3 Avg is +' + diff.toFixed(1) + ' above Season Avg">🔥</span>';
+                } else if (diff <= -3.0) {
+                    trendBadge = ' <span class="trend-cold" title="Cold: L3 Avg is ' + diff.toFixed(1) + ' below Season Avg">❄️</span>';
+                }
+            }
+
+            return {
+                mpgHtml: `<span class="roster-num">${summary.mpg.toFixed(1)}</span>`,
+                avgValHtml: `<span class="roster-val-badge ${avgClass}">${avgValStr}</span>`,
+                l3ValHtml: `<span class="roster-num roster-l3-cell"><strong>${l3ValStr}</strong>${trendBadge}</span>`
+            };
+        }
+
+        function renderTable(athletes) {
+            const columns = [
+                { key: 'name', label: 'Player', hideMobile: false, align: 'left' },
+                { key: 'pos', label: 'Pos', hideMobile: false, align: 'center' },
+                { key: 'height', label: 'Height', hideMobile: false, align: 'center' },
+                { key: 'class', label: 'Class', hideMobile: true, align: 'center' },
+                { key: 'mpg', label: 'MPG', hideMobile: false, align: 'right', title: 'Minutes Per Game' },
+                { key: 'avgVal', label: 'Avg VAL', hideMobile: false, align: 'right', title: 'Season Average VAL' },
+                { key: 'l3Val', label: 'L3 VAL', hideMobile: false, align: 'right', title: 'Last 3 Games Average VAL' }
+            ];
+
+            let html = `<table class="roster-table"><thead><tr>`;
+            columns.forEach(col => {
+                const classes = [];
+                if (col.hideMobile) classes.push('col-hide-mobile');
+                if (col.align === 'right') classes.push('col-num');
+                if (col.align === 'center') classes.push('col-center');
+                if (currentSort.key === col.key) classes.push('sorted-col');
+                const classAttr = classes.length ? ` class="${classes.join(' ')}"` : '';
+                const titleAttr = col.title ? ` title="${escapeHtml(col.title)}"` : '';
+                html += `<th${classAttr}${titleAttr} data-sort-key="${col.key}">${escapeHtml(col.label)} ${getSortIndicator(col.key)}</th>`;
             });
             html += `</tr></thead><tbody>`;
 
-            data.forEach(item => {
-                if (item.active === false) return;
+            athletes.forEach(player => {
+                if (player.active === false) return;
 
-                const player = type === 'stats' ? item.athlete : item;
-                const stats = type === 'stats' ? item.stats : [
-                    player.position?.abbreviation || '-',
-                    player.displayHeight || '-',
-                    player.displayWeight || '-',
-                    player.experience?.abbreviation || '-',
-                    player.birthPlace?.city ? `${player.birthPlace.city}, ${player.birthPlace.state || player.birthPlace.stateAbbrev || player.birthPlace.country}` : '-'
-                ];
+                const pos = player.position?.abbreviation || '-';
+                const height = player.displayHeight || '-';
+                const expClass = player.experience?.abbreviation || '-';
 
                 const headshotUrl = player.headshot?.href || (typeof player.headshot === 'string' ? player.headshot : null);
                 const img = headshotUrl ? sanitizeUrl(headshotUrl) : 'https://a.espncdn.com/i/headshots/nophoto.png';
-                const playerId = escapeHtml(player.id);
+                const playerId = String(player.id).replace(/[^a-zA-Z0-9_-]/g, '');
                 const safeName = escapeHtml(player.displayName);
                 const safeJersey = player.jersey ? escapeHtml(player.jersey) : '';
-                
+
+                const { mpgHtml, avgValHtml, l3ValHtml } = formatStatCellContent(playerId);
+
                 html += `<tr class="player-row" data-player-id="${playerId}" style="cursor: pointer;">
-                    <td><div class="roster-player-cell"><img src="${img}" class="headshot"><strong>${safeName}</strong> <span style="color:#888; font-size:0.8em">#${safeJersey}</span><span class="expand-chevron">▸</span></div></td>
-                    ${stats.map((s, idx) => {
-                        const hideClass = (headers[idx] === 'Weight' || headers[idx] === 'Birthplace') ? ' class="col-hide-mobile"' : '';
-                        return `<td${hideClass}>${escapeHtml(s)}</td>`;
-                    }).join('')}
+                    <td>
+                        <div class="roster-player-cell">
+                            <img src="${img}" class="headshot" alt="">
+                            <div class="roster-player-ident">
+                                <div><strong>${safeName}</strong> ${safeJersey ? `<span style="color:#888; font-size:0.8em">#${safeJersey}</span>` : ''}</div>
+                                <div class="roster-player-sub-mobile">${escapeHtml(expClass !== '-' ? expClass : '')}</div>
+                            </div>
+                            <span class="expand-chevron">▸</span>
+                        </div>
+                    </td>
+                    <td class="col-center">${escapeHtml(pos)}</td>
+                    <td class="col-center" style="white-space: nowrap;">${escapeHtml(height)}</td>
+                    <td class="col-hide-mobile col-center">${escapeHtml(expClass)}</td>
+                    <td class="col-num" id="cell-mpg-${playerId}">${mpgHtml}</td>
+                    <td class="col-num" id="cell-avgval-${playerId}">${avgValHtml}</td>
+                    <td class="col-num" id="cell-l3val-${playerId}">${l3ValHtml}</td>
                 </tr>
                 <tr id="stats-${playerId}" class="stats-row" style="display: none;">
-                    <td colspan="${headers.length + 1}" style="padding: 15px;">
+                    <td colspan="${columns.length}" class="stats-drawer-cell">
                         <div id="stats-content-${playerId}">
-                            Loading...
+                            <div class="loading" style="padding: 12px;">Loading player research...</div>
                         </div>
                     </td>
                 </tr>`;
@@ -96,113 +362,556 @@ permalink: /roster/
             playerContent.innerHTML = html;
         }
 
+        function sortRosterTable(sortKey, toggleDirection = true) {
+            if (toggleDirection) {
+                if (currentSort.key === sortKey) {
+                    currentSort.dir = currentSort.dir === 'asc' ? 'desc' : 'asc';
+                } else {
+                    currentSort.key = sortKey;
+                    currentSort.dir = (sortKey === 'name' || sortKey === 'pos' || sortKey === 'class') ? 'asc' : 'desc';
+                }
+            }
+
+            // Remember which rows are currently expanded so we don't lose their state
+            const expandedIds = new Set();
+            document.querySelectorAll('.player-row.expanded').forEach(r => {
+                if (r.dataset.playerId) expandedIds.add(r.dataset.playerId);
+            });
+
+            const dirMult = currentSort.dir === 'asc' ? 1 : -1;
+
+            rosterAthletes.sort((a, b) => {
+                const idA = String(a.id).replace(/[^a-zA-Z0-9_-]/g, '');
+                const idB = String(b.id).replace(/[^a-zA-Z0-9_-]/g, '');
+                const statA = playerSummaryStats[idA];
+                const statB = playerSummaryStats[idB];
+
+                if ( currentSort.key === 'name' ) {
+                    return (a.displayName || '').localeCompare(b.displayName || '') * dirMult;
+                }
+                if ( currentSort.key === 'pos' ) {
+                    return (a.position?.abbreviation || 'Z').localeCompare(b.position?.abbreviation || 'Z') * dirMult;
+                }
+                if ( currentSort.key === 'height' ) {
+                    return (parseHeightInches(a.displayHeight) - parseHeightInches(b.displayHeight)) * dirMult;
+                }
+                if ( currentSort.key === 'class' ) {
+                    const cA = CLASS_ORDER[(a.experience?.abbreviation || '').toUpperCase()] || 99;
+                    const cB = CLASS_ORDER[(b.experience?.abbreviation || '').toUpperCase()] || 99;
+                    return (cA - cB) * dirMult;
+                }
+
+                // Numeric stats (mpg, avgVal, l3Val): push players with 0 GP to bottom regardless of sort direction
+                const gpA = statA ? statA.gp : -1;
+                const gpB = statB ? statB.gp : -1;
+                if (gpA <= 0 && gpB <= 0) return (a.displayName || '').localeCompare(b.displayName || '');
+                if (gpA <= 0) return 1;
+                if (gpB <= 0) return -1;
+
+                const valA = statA[currentSort.key] ?? 0;
+                const valB = statB[currentSort.key] ?? 0;
+                if (valA === valB) {
+                    return (statB.avgVal - statA.avgVal);
+                }
+                return (valA - valB) * dirMult;
+            });
+
+            // Destroy existing chart instances before re-rendering DOM
+            Object.keys(chartInstances).forEach(k => {
+                if (chartInstances[k]) {
+                    chartInstances[k].destroy();
+                    delete chartInstances[k];
+                }
+            });
+
+            renderTable(rosterAthletes);
+
+            // Restore expanded rows
+            expandedIds.forEach(id => {
+                toggleStats(id, true);
+            });
+        }
+
         document.getElementById('player-content').addEventListener('click', (e) => {
+            const sortHeader = e.target.closest('th[data-sort-key]');
+            if (sortHeader) {
+                userHasSortedOrExpanded = true;
+                sortRosterTable(sortHeader.dataset.sortKey, true);
+                return;
+            }
+
             const row = e.target.closest('.player-row');
             if (row && row.dataset.playerId) {
+                userHasSortedOrExpanded = true;
                 toggleStats(row.dataset.playerId);
             }
         });
 
-        function toggleStats(rawId) {
+        async function fetchPlayerGamelogCached(playerId) {
+            if (playerGamelogCache[playerId]) {
+                return playerGamelogCache[playerId];
+            }
+
+            const storageKey = `gamelog_v1_${SPORT_PATH}_${playerId}`;
+            try {
+                const cachedRaw = sessionStorage.getItem(storageKey);
+                if (cachedRaw) {
+                    const parsed = JSON.parse(cachedRaw);
+                    if (parsed && parsed.ts && (Date.now() - parsed.ts < GAMELOG_CACHE_TTL_MS) && parsed.data) {
+                        playerGamelogCache[playerId] = parsed.data;
+                        return parsed.data;
+                    }
+                }
+            } catch (e) {}
+
+            const gamelogUrl = `https://site.web.api.espn.com/apis/common/v3/sports/basketball/${encodeURIComponent(SPORT_PATH)}/athletes/${encodeURIComponent(playerId)}/gamelog`;
+            const response = await fetch(gamelogUrl);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+            playerGamelogCache[playerId] = data;
+
+            try {
+                sessionStorage.setItem(storageKey, JSON.stringify({ ts: Date.now(), data }));
+            } catch (e) {}
+
+            return data;
+        }
+
+        function processPlayerGamelog(playerId, gamelogData) {
+            const labels = gamelogData?.labels || [];
+            const topLevelEvents = gamelogData?.events || {};
+            const playerStatsMap = {};
+
+            if (Array.isArray(gamelogData?.seasonTypes)) {
+                gamelogData.seasonTypes.forEach(season => {
+                    (season.categories || []).forEach(cat => {
+                        if (Array.isArray(cat.events)) {
+                            cat.events.forEach(evt => {
+                                if (evt && evt.eventId && Array.isArray(evt.stats)) {
+                                    playerStatsMap[String(evt.eventId)] = evt;
+                                }
+                            });
+                        }
+                    });
+                });
+            }
+
+            const getStatFromRow = (stats, key) => {
+                const idx = labels.indexOf(key);
+                return idx > -1 ? (stats[idx] || '0') : '0';
+            };
+
+            // Build chronological list of games played by the athlete
+            const playedGames = [];
+            Object.keys(playerStatsMap).forEach(eventId => {
+                const evt = playerStatsMap[eventId];
+                const stats = evt.stats || [];
+                const schedMeta = scheduleById[eventId];
+                const espnEvt = topLevelEvents[eventId] || {};
+
+                const rawDate = schedMeta?.date || (espnEvt.gameDate ? new Date(espnEvt.gameDate) : null);
+                const dateLabel = schedMeta?.label || (rawDate && !isNaN(rawDate) ? rawDate.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' }) : 'Game');
+                const vsAt = schedMeta?.vsAt || espnEvt.atVs || 'vs';
+                const oppName = schedMeta?.oppName || espnEvt.opponent?.shortDisplayName || espnEvt.opponent?.displayName || espnEvt.opponent?.abbreviation || 'Opponent';
+                const oppAbbrev = schedMeta?.oppAbbrev || espnEvt.opponent?.abbreviation || oppName;
+                const resultStr = schedMeta?.resultStr || (espnEvt.gameResult ? `${espnEvt.gameResult} ${espnEvt.score || ''}`.trim() : '-');
+                const isWin = schedMeta ? schedMeta.isWin : (espnEvt.gameResult === 'W');
+
+                const val = calculateVal(stats, labels);
+                const valDetails = getValDetails(stats, labels);
+                const minVal = parseFloat(getStatFromRow(stats, 'MIN')) || 0;
+                const pts = getStatFromRow(stats, 'PTS');
+                const reb = getStatFromRow(stats, 'REB');
+                const ast = getStatFromRow(stats, 'AST');
+                const fg = getStatFromRow(stats, 'FG');
+                const stl = getStatFromRow(stats, 'STL');
+                const blk = getStatFromRow(stats, 'BLK');
+
+                playedGames.push({
+                    eventId,
+                    date: rawDate && !isNaN(rawDate) ? rawDate : new Date(0),
+                    dateLabel,
+                    vsAt,
+                    oppName,
+                    oppAbbrev,
+                    resultStr,
+                    isWin,
+                    min: minVal,
+                    pts,
+                    reb,
+                    ast,
+                    fg,
+                    stl,
+                    blk,
+                    val,
+                    valDetails
+                });
+            });
+
+            playedGames.sort((a, b) => a.date - b.date);
+
+            const gp = playedGames.length;
+            let totalVal = 0;
+            let totalMin = 0;
+            let bestGame = null;
+            let minValScore = Infinity;
+            let solidCount = 0; // games >= 10 VAL
+
+            playedGames.forEach(g => {
+                totalVal += g.val;
+                totalMin += g.min;
+                if (!bestGame || g.val > bestGame.val) {
+                    bestGame = g;
+                }
+                if (g.val < minValScore) {
+                    minValScore = g.val;
+                }
+                if (g.val >= 10) {
+                    solidCount++;
+                }
+            });
+
+            const avgVal = gp > 0 ? (totalVal / gp) : 0;
+            const mpg = gp > 0 ? (totalMin / gp) : 0;
+            const last3 = playedGames.slice(-3);
+            const l3Val = last3.length > 0 ? (last3.reduce((acc, g) => acc + g.val, 0) / last3.length) : 0;
+            const hitRate = gp > 0 ? Math.round((solidCount / gp) * 100) : 0;
+
+            // Build chart points (use playedGames if teamSchedule has no overlap, else use teamSchedule timeline)
+            const hasScheduleOverlap = teamSchedule.some(g => Boolean(playerStatsMap[g.id]));
+            const chartPoints = [];
+
+            if (teamSchedule.length > 0 && hasScheduleOverlap) {
+                teamSchedule.forEach(game => {
+                    const played = playedGames.find(p => p.eventId === String(game.id));
+                    if (played) {
+                        chartPoints.push({
+                            label: `${game.label} (${game.oppAbbrev})`,
+                            shortLabel: game.label,
+                            val: played.val,
+                            dnp: false,
+                            meta: played
+                        });
+                    } else {
+                        chartPoints.push({
+                            label: `${game.label} (${game.oppAbbrev})`,
+                            shortLabel: game.label,
+                            val: 0,
+                            dnp: true,
+                            meta: {
+                                dateLabel: game.label,
+                                vsAt: game.vsAt,
+                                oppName: game.oppName,
+                                resultStr: game.resultStr,
+                                min: 0,
+                                pts: '0',
+                                reb: '0',
+                                ast: '0'
+                            }
+                        });
+                    }
+                });
+            } else {
+                playedGames.forEach(g => {
+                    chartPoints.push({
+                        label: `${g.dateLabel} (${g.oppAbbrev})`,
+                        shortLabel: g.dateLabel,
+                        val: g.val,
+                        dnp: false,
+                        meta: g
+                    });
+                });
+            }
+
+            const summary = {
+                gp,
+                mpg,
+                avgVal,
+                l3Val,
+                bestGame,
+                floorVal: gp > 0 ? minValScore : 0,
+                ceilVal: bestGame ? bestGame.val : 0,
+                hitRate,
+                playedGames,
+                chartPoints
+            };
+
+            playerSummaryStats[playerId] = summary;
+            return summary;
+        }
+
+        function updatePlayerRowCells(playerId) {
+            const { mpgHtml, avgValHtml, l3ValHtml } = formatStatCellContent(playerId);
+            const mpgEl = document.getElementById(`cell-mpg-${playerId}`);
+            const avgEl = document.getElementById(`cell-avgval-${playerId}`);
+            const l3El = document.getElementById(`cell-l3val-${playerId}`);
+            if (mpgEl) mpgEl.innerHTML = mpgHtml;
+            if (avgEl) avgEl.innerHTML = avgValHtml;
+            if (l3El) l3El.innerHTML = l3ValHtml;
+        }
+
+        async function preloadAllPlayerGamelogs(athletes) {
+            const tasks = athletes.map(async (player) => {
+                const playerId = String(player.id).replace(/[^a-zA-Z0-9_-]/g, '');
+                try {
+                    const data = await fetchPlayerGamelogCached(playerId);
+                    processPlayerGamelog(playerId, data);
+                } catch (e) {
+                    playerSummaryStats[playerId] = { gp: 0, mpg: 0, avgVal: 0, l3Val: 0, playedGames: [], chartPoints: [] };
+                }
+                updatePlayerRowCells(playerId);
+            });
+
+            await Promise.allSettled(tasks);
+
+            // Auto-sort by Avg VAL descending once all stats arrive if user hasn't manually interacted yet
+            if (!userHasSortedOrExpanded) {
+                sortRosterTable('avgVal', false);
+            }
+        }
+
+        function renderExpandedDrawer(playerId, summary) {
+            const playerObj = rosterAthletes.find(a => String(a.id).replace(/[^a-zA-Z0-9_-]/g, '') === playerId);
+            const playerName = playerObj?.displayName || 'Player';
+
+            if (!summary || summary.gp === 0) {
+                return `<div class="roster-empty-drawer">No completed game logs recorded for <strong>${escapeHtml(playerName)}</strong> yet this season.</div>`;
+            }
+
+            const l3Diff = summary.l3Val - summary.avgVal;
+            const l3DiffSign = l3Diff >= 0 ? '+' : '';
+            const l3DiffClass = l3Diff >= 2 ? 'pill-sub-pos' : (l3Diff <= -2 ? 'pill-sub-neg' : '');
+            const bestSub = summary.bestGame ? `${summary.bestGame.vsAt} ${summary.bestGame.oppAbbrev} (${summary.bestGame.dateLabel})` : '-';
+
+            // 1. 4-Pill Summary Strip
+            const summaryStripHtml = `
+                <div class="roster-summary-strip">
+                    <div class="roster-stat-pill">
+                        <span class="roster-pill-label">Season Avg VAL</span>
+                        <span class="roster-pill-value">${summary.avgVal.toFixed(1)}</span>
+                        <span class="roster-pill-sub">${summary.gp} GP · ${summary.mpg.toFixed(1)} MPG</span>
+                    </div>
+                    <div class="roster-stat-pill">
+                        <span class="roster-pill-label">Last 3 Avg VAL</span>
+                        <span class="roster-pill-value">${summary.l3Val.toFixed(1)}</span>
+                        <span class="roster-pill-sub ${l3DiffClass}">${l3DiffSign}${l3Diff.toFixed(1)} vs Season Avg</span>
+                    </div>
+                    <div class="roster-stat-pill">
+                        <span class="roster-pill-label">Season High VAL</span>
+                        <span class="roster-pill-value">${summary.ceilVal}</span>
+                        <span class="roster-pill-sub">${escapeHtml(bestSub)}</span>
+                    </div>
+                    <div class="roster-stat-pill">
+                        <span class="roster-pill-label">Consistency (≥10 VAL)</span>
+                        <span class="roster-pill-value">${summary.hitRate}%</span>
+                        <span class="roster-pill-sub">Floor: ${summary.floorVal} · Ceil: ${summary.ceilVal}</span>
+                    </div>
+                </div>
+            `;
+
+            // 2. Enhanced VAL Chart Container
+            const chartHtml = `
+                <div class="roster-chart-card">
+                    <div class="roster-section-header">
+                        <span class="roster-section-title">Game-by-Game VAL Trend</span>
+                        <span class="roster-chart-legend">
+                            <span class="legend-item"><span class="legend-line-solid"></span> Game VAL</span>
+                            <span class="legend-item"><span class="legend-line-dashed"></span> Season Avg (${summary.avgVal.toFixed(1)})</span>
+                        </span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="chart-${playerId}"></canvas>
+                    </div>
+                </div>
+            `;
+
+            // 3. Recent Games Mini-Log (Last 5 Games)
+            const recent5 = summary.playedGames.slice(-5).reverse();
+            const miniLogRows = recent5.map(g => {
+                const detailsAttr = g.valDetails ? escapeHtml(JSON.stringify(g.valDetails)) : '';
+                const subText = `${g.vsAt} ${g.oppName} · ${g.dateLabel} (${g.resultStr})`;
+                const valBadgeClass = g.val >= 15 ? 'val-pill-high' : (g.val >= 8 ? 'val-pill-mid' : 'val-pill-low');
+                const winLossClass = g.resultStr.startsWith('W') ? 'win' : (g.resultStr.startsWith('L') ? 'loss' : '');
+
+                return `
+                    <tr>
+                        <td>${escapeHtml(g.dateLabel)}</td>
+                        <td><strong>${escapeHtml(g.vsAt)} ${escapeHtml(g.oppName)}</strong></td>
+                        <td><span class="${winLossClass}">${escapeHtml(g.resultStr)}</span></td>
+                        <td class="col-num">${escapeHtml(String(g.min))}</td>
+                        <td class="col-num">${escapeHtml(String(g.pts))}</td>
+                        <td class="col-num">${escapeHtml(String(g.reb))}</td>
+                        <td class="col-num">${escapeHtml(String(g.ast))}</td>
+                        <td class="col-num col-hide-mobile">${escapeHtml(String(g.fg))}</td>
+                        <td class="col-num">
+                            <button type="button" class="minilog-val-btn ${valBadgeClass}"
+                                data-val-details="${detailsAttr}"
+                                data-player-name="${escapeHtml(playerName)}"
+                                data-player-sub="${escapeHtml(subText)}"
+                                onclick="showValBreakdown(this)"
+                                title="View VAL Breakdown">
+                                <span>${g.val}</span>
+                                <span class="minilog-info-icon">ℹ️</span>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            const miniLogHtml = `
+                <div class="roster-minilog-wrapper">
+                    <div class="roster-section-header">
+                        <span class="roster-section-title">Last ${recent5.length} Games Log</span>
+                        <span class="roster-minilog-hint">Tap any game's <strong>VAL ℹ️</strong> for point breakdown</span>
+                    </div>
+                    <div style="overflow-x: auto;">
+                        <table class="roster-minilog-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Opponent</th>
+                                    <th>Result</th>
+                                    <th class="col-num">MIN</th>
+                                    <th class="col-num">PTS</th>
+                                    <th class="col-num">REB</th>
+                                    <th class="col-num">AST</th>
+                                    <th class="col-num col-hide-mobile">FG</th>
+                                    <th class="col-num">VAL</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${miniLogRows}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            `;
+
+            return `<div class="roster-drawer-inner">${summaryStripHtml}${chartHtml}${miniLogHtml}</div>`;
+        }
+
+        function mountPlayerChart(playerId, summary) {
+            const canvas = document.getElementById(`chart-${playerId}`);
+            if (!canvas || !summary || summary.chartPoints.length === 0) return;
+
+            if (chartInstances[playerId]) {
+                chartInstances[playerId].destroy();
+            }
+
+            const isDark = document.body.classList.contains('dark-mode') || document.documentElement.classList.contains('dark-mode');
+            const textColor = isDark ? '#e0e0e0' : '#555';
+            const gridColor = isDark ? '#3a3a3a' : '#e5e7eb';
+            const avgLineColor = isDark ? '#9ca3af' : '#6b7280';
+
+            const labels = summary.chartPoints.map(p => p.shortLabel);
+            const valSeries = summary.chartPoints.map(p => p.val);
+            const avgSeries = summary.chartPoints.map(() => Number(summary.avgVal.toFixed(1)));
+
+            chartInstances[playerId] = new Chart(canvas, {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        {
+                            label: 'Game VAL',
+                            data: valSeries,
+                            borderColor: '#cc0000',
+                            backgroundColor: 'rgba(204, 0, 0, 0.12)',
+                            pointBackgroundColor: summary.chartPoints.map(p => p.dnp ? '#9ca3af' : (p.val >= summary.avgVal ? '#16a34a' : '#cc0000')),
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            tension: 0.15,
+                            fill: true
+                        },
+                        {
+                            label: 'Season Avg VAL',
+                            data: avgSeries,
+                            borderColor: avgLineColor,
+                            borderDash: [5, 5],
+                            borderWidth: 1.5,
+                            pointRadius: 0,
+                            pointHoverRadius: 0,
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                title: (items) => {
+                                    const idx = items?.[0]?.dataIndex;
+                                    const pt = summary.chartPoints[idx];
+                                    if (!pt) return '';
+                                    return `${pt.meta.dateLabel} · ${pt.meta.vsAt} ${pt.meta.oppName} (${pt.meta.resultStr})`;
+                                },
+                                label: (item) => {
+                                    if (item.datasetIndex === 1) {
+                                        return `Season Avg: ${summary.avgVal.toFixed(1)}`;
+                                    }
+                                    const pt = summary.chartPoints[item.dataIndex];
+                                    if (pt?.dnp) {
+                                        return 'VAL: 0 (Did Not Play)';
+                                    }
+                                    return `Game VAL: ${item.raw}`;
+                                },
+                                afterBody: (items) => {
+                                    const idx = items?.[0]?.dataIndex;
+                                    const pt = summary.chartPoints[idx];
+                                    if (!pt || pt.dnp) return '';
+                                    const m = pt.meta;
+                                    return `${m.pts} PTS · ${m.reb} REB · ${m.ast} AST · ${m.min} MIN`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { color: textColor },
+                            grid: { color: gridColor }
+                        },
+                        x: {
+                            ticks: { color: textColor },
+                            grid: { color: gridColor }
+                        }
+                    }
+                }
+            });
+        }
+
+        function toggleStats(rawId, forceOpen = false) {
             const id = String(rawId).replace(/[^a-zA-Z0-9_-]/g, '');
             const row = document.getElementById('stats-' + id);
             const content = document.getElementById('stats-content-' + id);
             const playerRow = document.querySelector(`.player-row[data-player-id="${id}"]`);
-            
-            if (row.style.display === 'none') {
+            if (!row || !content) return;
+
+            if (row.style.display === 'none' || forceOpen) {
                 row.style.display = 'table-row';
                 if (playerRow) playerRow.classList.add('expanded');
-                if (!content.hasAttribute('data-loaded')) {
-                    const gamelogUrl = `https://site.web.api.espn.com/apis/common/v3/sports/basketball/${encodeURIComponent(SPORT_PATH)}/athletes/${encodeURIComponent(id)}/gamelog`;
 
-                    fetch(gamelogUrl)
-                        .then(r => r.json())
+                const renderWithSummary = (summary) => {
+                    content.innerHTML = renderExpandedDrawer(id, summary);
+                    mountPlayerChart(id, summary);
+                    content.setAttribute('data-loaded', 'true');
+                };
+
+                if (playerSummaryStats[id]) {
+                    renderWithSummary(playerSummaryStats[id]);
+                } else {
+                    fetchPlayerGamelogCached(id)
                         .then(gamelogData => {
-                            // Process Gamelog for Chart
-                            let chartHtml = '';
-                            let chartData = null;
-                            
-                            if (gamelogData.seasonTypes) {
-                                const season = gamelogData.seasonTypes.find(s => s.categories) || gamelogData.seasonTypes[0];
-                                if (season && season.categories) {
-                                    const cat = season.categories.find(c => c.name === 'offensive') || season.categories[0];
-                                    if (cat && cat.events) {
-                                        const labels = gamelogData.labels;
-                                        const playerEvents = cat.events;
-                                        const playerStatsMap = {};
-                                        playerEvents.forEach(evt => {
-                                            playerStatsMap[evt.eventId] = evt;
-                                        });
-                                        
-                                        const gameLabels = [];
-                                        const valData = [];
-
-                                        teamSchedule.forEach(game => {
-                                            gameLabels.push(game.label);
-                                            let val = 0;
-                                            const evt = playerStatsMap[game.id];
-
-                                            if (evt && evt.stats) {
-                                                val = calculateVal(evt.stats, labels);
-                                            }
-                                            valData.push(val);
-                                        });
-                                        
-                                        chartData = { labels: gameLabels, data: valData };
-                                        chartHtml = `<div class="chart-container"><canvas id="chart-${id}"></canvas></div>`;
-                                    }
-                                }
-                            }
-
-                            content.innerHTML = `
-                                ${chartHtml}
-                            `;
-                            
-                            if (chartData) {
-                                const isDark = document.body.classList.contains('dark-mode');
-                                const textColor = isDark ? '#e0e0e0' : '#666';
-                                const gridColor = isDark ? '#444' : '#ddd';
-
-                                chartInstances[id] = new Chart(document.getElementById(`chart-${id}`), {
-                                    type: 'line',
-                                    data: {
-                                        labels: chartData.labels,
-                                        datasets: [{
-                                            label: 'VAL',
-                                            data: chartData.data,
-                                            borderColor: '#cc0000',
-                                            backgroundColor: 'rgba(204, 0, 0, 0.1)',
-                                            tension: 0.1,
-                                            fill: true
-                                        }]
-                                    },
-                                    options: {
-                                        responsive: true,
-                                        maintainAspectRatio: false,
-                                        plugins: {
-                                            legend: { display: false },
-                                            title: { 
-                                                display: true, 
-                                                text: 'Value (VAL) per Game',
-                                                color: textColor
-                                            }
-                                        },
-                                        scales: {
-                                            y: { 
-                                                beginAtZero: true,
-                                                ticks: { color: textColor },
-                                                grid: { color: gridColor }
-                                            },
-                                            x: {
-                                                ticks: { color: textColor },
-                                                grid: { color: gridColor }
-                                            }
-                                        }
-                                    }
-                                });
-                            }
-
-                            content.setAttribute('data-loaded', 'true');
+                            const summary = processPlayerGamelog(id, gamelogData);
+                            updatePlayerRowCells(id);
+                            renderWithSummary(summary);
                         })
                         .catch(err => {
                             console.error('Error loading gamelog:', err);
@@ -218,12 +927,11 @@ permalink: /roster/
         const observer = new MutationObserver((mutations) => {
             mutations.forEach((mutation) => {
                 if (mutation.attributeName === 'class') {
-                    const isDark = document.body.classList.contains('dark-mode');
-                    const textColor = isDark ? '#e0e0e0' : '#666';
-                    const gridColor = isDark ? '#444' : '#ddd';
-                    
+                    const isDark = document.body.classList.contains('dark-mode') || document.documentElement.classList.contains('dark-mode');
+                    const textColor = isDark ? '#e0e0e0' : '#555';
+                    const gridColor = isDark ? '#3a3a3a' : '#e5e7eb';
+
                     Object.values(chartInstances).forEach(chart => {
-                        chart.options.plugins.title.color = textColor;
                         chart.options.scales.y.ticks.color = textColor;
                         chart.options.scales.x.ticks.color = textColor;
                         chart.options.scales.y.grid.color = gridColor;

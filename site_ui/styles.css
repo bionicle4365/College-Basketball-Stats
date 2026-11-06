@@ -2695,3 +2695,390 @@ body.dark-mode .pick-val-explainer {
         gap: 10px;
     }
 }
+
+
+/* ==========================================================================
+   Roster Pick'em Research Enhancements
+   ========================================================================== */
+.roster-header-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.roster-subtitle {
+    margin: 4px 0 0 0;
+    font-size: 0.85rem;
+    color: #6b7280;
+}
+body.dark-mode .roster-subtitle {
+    color: #9ca3af;
+}
+
+.roster-table th {
+    user-select: none;
+    white-space: nowrap;
+    transition: background-color 0.15s ease, color 0.15s ease;
+}
+.roster-table th:hover {
+    color: #cc0000;
+}
+body.dark-mode .roster-table th:hover {
+    color: #ff6b6b;
+}
+
+.roster-table th.sorted-col {
+    color: #cc0000;
+}
+body.dark-mode .roster-table th.sorted-col {
+    color: #ff6b6b !important;
+}
+
+.sort-indicator {
+    font-size: 0.75rem;
+    opacity: 0.35;
+    margin-left: 3px;
+    display: inline-block;
+}
+.sort-indicator.active {
+    opacity: 1;
+    font-weight: 800;
+}
+
+.roster-table th.col-center,
+.roster-table td.col-center {
+    text-align: center;
+}
+.roster-table th.col-num,
+.roster-table td.col-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.roster-player-cell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.roster-player-ident {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+.roster-player-sub-mobile {
+    display: none;
+    font-size: 0.72rem;
+    color: #888;
+}
+
+.stat-loading-dots {
+    color: #9ca3af;
+    letter-spacing: 1px;
+    font-weight: 600;
+}
+.stat-muted {
+    color: #9ca3af;
+}
+
+.roster-num {
+    font-variant-numeric: tabular-nums;
+}
+
+.roster-val-badge {
+    display: inline-block;
+    min-width: 44px;
+    text-align: center;
+    padding: 3px 8px;
+    border-radius: 9999px;
+    font-weight: 700;
+    font-size: 0.85rem;
+    font-variant-numeric: tabular-nums;
+}
+.val-pill-high {
+    background-color: #dcfce7;
+    color: #15803d;
+    border: 1px solid #bbf7d0;
+}
+.val-pill-mid {
+    background-color: #f0f9ff;
+    color: #0369a1;
+    border: 1px solid #bae6fd;
+}
+.val-pill-low {
+    background-color: #f3f4f6;
+    color: #4b5563;
+    border: 1px solid #e5e7eb;
+}
+body.dark-mode .val-pill-high {
+    background-color: #064e3b;
+    color: #4ade80;
+    border-color: #065f46;
+}
+body.dark-mode .val-pill-mid {
+    background-color: #0c4a6e;
+    color: #38bdf8;
+    border-color: #075985;
+}
+body.dark-mode .val-pill-low {
+    background-color: #262626;
+    color: #9ca3af;
+    border-color: #3f3f46;
+}
+
+.roster-l3-cell {
+    white-space: nowrap;
+}
+.trend-fire, .trend-cold {
+    font-size: 0.85rem;
+    margin-left: 2px;
+}
+
+/* Expanded Research Drawer */
+.stats-drawer-cell {
+    padding: 16px !important;
+    background-color: #f8fafc;
+    border-bottom: 2px solid #e2e8f0 !important;
+}
+body.dark-mode .stats-drawer-cell {
+    background-color: #18181b !important;
+    border-bottom-color: #333 !important;
+}
+
+.roster-drawer-inner {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.roster-empty-drawer {
+    padding: 14px;
+    text-align: center;
+    color: #6b7280;
+    font-size: 0.9rem;
+}
+body.dark-mode .roster-empty-drawer {
+    color: #9ca3af;
+}
+
+/* 1. 4-Pill Summary Strip */
+.roster-summary-strip {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 10px;
+}
+.roster-stat-pill {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+body.dark-mode .roster-stat-pill {
+    background: #242427;
+    border-color: #38383d;
+}
+.roster-pill-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #6b7280;
+}
+body.dark-mode .roster-pill-label {
+    color: #9ca3af;
+}
+.roster-pill-value {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: #111827;
+    font-variant-numeric: tabular-nums;
+}
+body.dark-mode .roster-pill-value {
+    color: #f3f4f6;
+}
+.roster-pill-sub {
+    font-size: 0.76rem;
+    color: #6b7280;
+}
+body.dark-mode .roster-pill-sub {
+    color: #9ca3af;
+}
+.roster-pill-sub.pill-sub-pos {
+    color: #15803d;
+    font-weight: 600;
+}
+.roster-pill-sub.pill-sub-neg {
+    color: #b91c1c;
+    font-weight: 600;
+}
+body.dark-mode .roster-pill-sub.pill-sub-pos {
+    color: #4ade80;
+}
+body.dark-mode .roster-pill-sub.pill-sub-neg {
+    color: #f87171;
+}
+
+/* 2. Enhanced VAL Chart Card */
+.roster-chart-card,
+.roster-minilog-wrapper {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 12px 14px;
+}
+body.dark-mode .roster-chart-card,
+body.dark-mode .roster-minilog-wrapper {
+    background: #242427;
+    border-color: #38383d;
+}
+
+.roster-section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.roster-section-title {
+    font-size: 0.8rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #374151;
+}
+body.dark-mode .roster-section-title {
+    color: #d1d5db;
+}
+
+.roster-chart-legend {
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 0.76rem;
+    color: #6b7280;
+}
+body.dark-mode .roster-chart-legend {
+    color: #9ca3af;
+}
+.legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+.legend-line-solid {
+    width: 16px;
+    height: 3px;
+    background: #cc0000;
+    border-radius: 2px;
+    display: inline-block;
+}
+.legend-line-dashed {
+    width: 16px;
+    height: 0;
+    border-top: 2px dashed #6b7280;
+    display: inline-block;
+}
+body.dark-mode .legend-line-dashed {
+    border-top-color: #9ca3af;
+}
+
+.roster-chart-card .chart-container {
+    margin-top: 6px;
+    height: 190px;
+}
+
+/* 3. Recent Games Mini-Log */
+.roster-minilog-hint {
+    font-size: 0.75rem;
+    color: #6b7280;
+}
+body.dark-mode .roster-minilog-hint {
+    color: #9ca3af;
+}
+
+.roster-minilog-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.83rem;
+}
+.roster-minilog-table th,
+.roster-minilog-table td {
+    padding: 7px 8px;
+    border-bottom: 1px solid #f1f5f9;
+    white-space: nowrap;
+}
+.roster-minilog-table th {
+    background-color: #f8fafc;
+    font-size: 0.74rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #64748b;
+    cursor: default;
+}
+.roster-minilog-table th:hover {
+    color: #64748b;
+}
+body.dark-mode .roster-minilog-table th {
+    background-color: #1e1e21 !important;
+    color: #9ca3af !important;
+}
+body.dark-mode .roster-minilog-table td {
+    border-bottom-color: #2e2e33 !important;
+}
+.roster-minilog-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.minilog-val-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 9px;
+    border-radius: 9999px;
+    font-weight: 700;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+    font-family: inherit;
+}
+.minilog-val-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.12);
+}
+.minilog-info-icon {
+    font-size: 0.7rem;
+    opacity: 0.8;
+}
+
+@media (max-width: 700px) {
+    .roster-summary-strip {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 650px) {
+    .roster-player-sub-mobile {
+        display: block;
+    }
+    .roster-val-badge {
+        min-width: 36px;
+        padding: 2px 6px;
+        font-size: 0.78rem;
+    }
+    .stats-drawer-cell {
+        padding: 10px !important;
+    }
+    .roster-stat-pill {
+        padding: 8px 10px;
+    }
+    .roster-pill-value {
+        font-size: 1.08rem;
+    }
+}
