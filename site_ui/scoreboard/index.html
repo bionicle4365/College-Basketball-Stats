@@ -1880,7 +1880,7 @@ permalink: /scoreboard/
     // Map requested columns to API labels
     // API labels in 'names': MIN, PTS, REB, AST, STL, BLK, TO, PF
     // We need to find the index in the 'stats' array for each player
-    const targetStats = ['MIN', 'PTS', 'FG', '3PT', 'FT', 'REB', 'STL', 'AST', 'BLK', 'TO', 'PF'];
+    const targetStats = ['MIN', 'VAL/MIN', 'PTS', 'FG', '3PT', 'FT', 'REB', 'STL', 'AST', 'BLK', 'TO', 'PF'];
     
     const sortedPlayers = [...summary.boxscore.players].sort((a, b) => {
       return (a.team.id == TEAM_ID) ? -1 : (b.team.id == TEAM_ID) ? 1 : 0;
@@ -1891,7 +1891,7 @@ permalink: /scoreboard/
       if (!statsData || !statsData.names || !statsData.athletes) return '';
 
       const labels = statsData.names;
-      const indices = targetStats.map(stat => labels.indexOf(stat));
+      const minIdx = labels.indexOf('MIN');
       
       const playersWithVal = statsData.athletes
         .filter(player => player.stats && player.stats.length > 0)
@@ -1917,7 +1917,15 @@ permalink: /scoreboard/
         const details = getValDetails(stats, labels);
         const detailsJson = details ? escapeHtml(JSON.stringify(details)) : '';
         const activeIndicator = player.active ? '🏀 ' : '';
-        const cells = indices.map(idx => `<td>${idx !== -1 ? escapeHtml(stats[idx] || '0') : '-'}</td>`).join('');
+        const minVal = minIdx !== -1 ? (parseFloat(stats[minIdx]) || 0) : 0;
+        const valPerMinText = minVal > 0 ? (score / minVal).toFixed(2) : '-';
+        const cells = targetStats.map(stat => {
+          if (stat === 'VAL/MIN') {
+            return `<td>${valPerMinText}</td>`;
+          }
+          const idx = labels.indexOf(stat);
+          return `<td>${idx !== -1 ? escapeHtml(stats[idx] || '0') : '-'}</td>`;
+        }).join('');
         const tooltip = escapeHtml(getValTooltip(stats, labels));
 
         const isPicked = player.athlete && String(player.athlete.id) === String(pickedPlayerId);
