@@ -663,7 +663,7 @@ permalink: /groups/
                                 const cls = pick.isTopPlayer ? 'trend-top' : 'trend-normal';
                                 const star = pick.isTopPlayer ? '★' : '';
                                 const safePlayer = escapeHtml(pick.playerName);
-                                trendHtml += `<span class="trend-pill ${cls}" title="${safePlayer}: +${pick.val} VAL">${star}+${pick.val}</span>`;
+                                trendHtml += `<span class="trend-pill ${getValTierClass(pick.val)}" title="${safePlayer}: ${pick.val >= 0 ? '+' : ''}${pick.val} VAL">${star}${pick.val >= 0 ? '+' : ''}${pick.val}</span>`;
                             } else {
                                 trendHtml += `<span class="trend-pill trend-none" title="No Pick">-</span>`;
                             }
@@ -732,7 +732,7 @@ permalink: /groups/
                                 const crown = pick.isTopPlayer ? ' 👑' : '';
                                 return `<td style="text-align: center; padding: 6px; ${cls}">
                                     <div style="font-weight: 500; font-size: 0.85rem;">${escapeHtml(pick.playerName)}</div>
-                                    <div style="font-weight: bold; color: ${pick.isTopPlayer ? '#28a745' : '#666'}; font-size: 0.85rem;">+${pick.val}${crown}</div>
+                                    <div><span class="roster-val-badge ${getValTierClass(pick.val)}">${pick.val >= 0 ? '+' : ''}${pick.val}${crown}</span></div>
                                 </td>`;
                             } else {
                                 return `<td style="text-align: center; color: #bbb; font-size: 0.85rem;">-</td>`;

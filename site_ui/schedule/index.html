@@ -189,7 +189,7 @@ permalink: /schedule/
                             if (topPlayer) {
                                 const cell = document.getElementById(`val-${game.id}`);
                                 const cardCell = document.getElementById(`val-card-${game.id}`);
-                                const topPlayerStr = `<strong>${escapeHtml(topPlayer)}</strong> (${maxVal})`;
+                                const topPlayerStr = `<strong>${escapeHtml(topPlayer)}</strong> <span class="roster-val-badge ${getValTierClass(maxVal)}">${maxVal}</span>`;
                                 if (cell) {
                                     cell.innerHTML = topPlayerStr;
                                     cell.style.color = '';
@@ -211,7 +211,7 @@ permalink: /schedule/
                                         const pickCardCell = document.getElementById(`pick-card-${game.id}`);
                                         const pickChip = document.getElementById(`pick-chip-${game.id}`);
                                         const playerName = player.athlete ? (player.athlete.shortName || player.athlete.displayName) : (playerMap[String(pickedPlayerId)] || playerMap[pickedPlayerId] || 'Unknown');
-                                        const pickStr = `<strong>${escapeHtml(playerName)}</strong> (${val})`;
+                                        const pickStr = `<strong>${escapeHtml(playerName)}</strong> <span class="roster-val-badge ${getValTierClass(val)}">${val}</span>`;
 
                                         if (pickCell) {
                                             pickCell.innerHTML = pickStr;

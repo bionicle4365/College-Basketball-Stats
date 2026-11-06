@@ -1550,7 +1550,7 @@ permalink: /scoreboard/
           </td>
           <td class="sb-group-cell-val">
             ${m.hasPick
-                ? `<span class="sb-val-pill ${m.val >= 0 ? 'val-pos' : 'val-neg'}" ${m.playerDetailsJson ? `style="cursor:pointer;" onclick="showValBreakdown(this)" data-player-name="${escapeHtml(m.playerFull)}" data-player-sub="${escapeHtml(m.playerSub)}" data-val-details="${escapeHtml(m.playerDetailsJson)}" title="Click to view VAL breakdown"` : ''}>${m.val >= 0 ? '+' : ''}${m.val} VAL</span>`
+                ? `<span class="sb-val-pill ${getValTierClass(m.val)}" ${m.playerDetailsJson ? `style="cursor:pointer;" onclick="showValBreakdown(this)" data-player-name="${escapeHtml(m.playerFull)}" data-player-sub="${escapeHtml(m.playerSub)}" data-val-details="${escapeHtml(m.playerDetailsJson)}" title="Click to view VAL breakdown"` : ''}>${m.val >= 0 ? '+' : ''}${m.val} VAL</span>`
                 : `<span class="sb-val-pill val-neutral">-</span>`}
           </td>
         </tr>
@@ -1919,7 +1919,7 @@ permalink: /scoreboard/
         const activeIndicator = player.active ? '🏀 ' : '';
         const minVal = minIdx !== -1 ? (parseFloat(stats[minIdx]) || 0) : 0;
         const valPerMinText = minVal > 0 ? (score / minVal).toFixed(2) : '-';
-        const valPillClass = score >= 15 ? 'val-pill-high' : (score >= 8 ? 'val-pill-mid' : (score < 0 ? 'val-pill-neg' : 'val-pill-low'));
+        const valPillClass = getValTierClass(score);
         const cells = targetStats.map(stat => {
           if (stat === 'VPM') {
             return `<td class="col-stat-vpm">${valPerMinText}</td>`;

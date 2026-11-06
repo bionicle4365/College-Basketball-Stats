@@ -274,7 +274,7 @@ permalink: /roster/
             }
 
             const avgValStr = summary.avgVal.toFixed(1);
-            const avgClass = summary.avgVal >= 15 ? 'val-pill-high' : (summary.avgVal >= 8 ? 'val-pill-mid' : 'val-pill-low');
+            const avgClass = getValTierClass(summary.avgVal);
 
             const valPerMinStr = summary.mpg > 0 ? summary.valPerMin.toFixed(2) : '-';
 
@@ -847,7 +847,7 @@ permalink: /roster/
                             data: valSeries,
                             borderColor: '#cc0000',
                             backgroundColor: 'rgba(204, 0, 0, 0.12)',
-                            pointBackgroundColor: summary.chartPoints.map(p => p.dnp ? '#9ca3af' : (p.val >= summary.avgVal ? '#16a34a' : '#cc0000')),
+                            pointBackgroundColor: summary.chartPoints.map(p => p.dnp ? '#9ca3af' : (p.val >= 30 ? '#16a34a' : (p.val >= 15 ? '#0284c7' : (p.val < 0 ? '#dc2626' : '#64748b')))),
                             pointRadius: 4,
                             pointHoverRadius: 6,
                             tension: 0.15,

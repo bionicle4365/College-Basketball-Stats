@@ -3471,3 +3471,51 @@ body.dark-mode .stats-table td.col-stat-vpm {
         font-size: 0.75rem;
     }
 }
+
+
+/* ==========================================================================
+   Standardized 4-Tier Player VAL Color System (Across All Pages)
+   - Red   (< 0):      .val-pill-neg
+   - None  (0 to <15): .val-pill-low
+   - Blue  (15 to <30):.val-pill-mid
+   - Green (30+):      .val-pill-high
+   ========================================================================== */
+.val-pill-low,
+body.dark-mode .val-pill-low {
+    background-color: transparent !important;
+    border-color: transparent !important;
+    color: inherit !important;
+}
+
+.val-pill-mid {
+    background-color: #e0f2fe !important;
+    color: #0369a1 !important;
+    border: 1px solid #bae6fd !important;
+}
+body.dark-mode .val-pill-mid {
+    background-color: #0c4a6e !important;
+    color: #38bdf8 !important;
+    border: 1px solid #075985 !important;
+}
+
+.val-pill-high {
+    background-color: #dcfce7 !important;
+    color: #15803d !important;
+    border: 1px solid #bbf7d0 !important;
+}
+body.dark-mode .val-pill-high {
+    background-color: #064e3b !important;
+    color: #4ade80 !important;
+    border: 1px solid #065f46 !important;
+}
+
+.val-pill-neg {
+    background-color: #fef2f2 !important;
+    color: #b91c1c !important;
+    border: 1px solid #fecaca !important;
+}
+body.dark-mode .val-pill-neg {
+    background-color: #7f1d1d !important;
+    color: #f87171 !important;
+    border: 1px solid #991b1b !important;
+}

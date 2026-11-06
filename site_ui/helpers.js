@@ -319,7 +319,7 @@ function renderValBreakdownHtml(details, playerName, teamInfo) {
         </div>
     `).join('');
 
-    const scorePillClass = total > 0 ? 'val-positive' : (total < 0 ? 'val-negative' : 'val-neutral');
+    const scorePillClass = getValTierClass(total);
     const scorePillSign = total > 0 ? '+' : '';
 
     const mathString = `VAL = ${pts} (PTS) + ${threePt.m} (3PM) - ${fg.a} (FGA) + ${fg.m * 2} (2×FGM) - ${ft.a} (FTA) + ${ft.m} (FTM) + ${reb} (REB) + ${ast * 2} (2×AST) + ${stl * 4} (4×STL) + ${blk * 4} (4×BLK) - ${tov * 2} (2×TO) = ${total}`;
@@ -520,4 +520,13 @@ async function fetchTeamRoster(sportPath, teamId) {
 
     return null;
 }
-
+
+
+function getValTierClass(val) {
+    const num = Number(val);
+    if (isNaN(num)) return 'val-pill-low';
+    if (num < 0) return 'val-pill-neg';
+    if (num >= 30) return 'val-pill-high';
+    if (num >= 15) return 'val-pill-mid';
+    return 'val-pill-low';
+}
