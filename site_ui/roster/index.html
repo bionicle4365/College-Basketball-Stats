@@ -577,6 +577,22 @@ permalink: /roster/
             let minValScore = Infinity;
             let solidCount = 0; // games >= 10 VAL
 
+            let homeGames = 0;
+            let homeValTotal = 0;
+            let awayGames = 0;
+            let awayValTotal = 0;
+
+            let totPts = 0;
+            let totFgm = 0;
+            let totFga = 0;
+            let tot3pm = 0;
+            let totFtm = 0;
+            let totFta = 0;
+            let totAst = 0;
+            let totTov = 0;
+            let totStl = 0;
+            let totBlk = 0;
+
             playedGames.forEach(g => {
                 totalVal += g.val;
                 totalMin += g.min;
@@ -589,6 +605,27 @@ permalink: /roster/
                 if (g.val >= 10) {
                     solidCount++;
                 }
+
+                if (g.vsAt === 'vs') {
+                    homeGames++;
+                    homeValTotal += g.val;
+                } else {
+                    awayGames++;
+                    awayValTotal += g.val;
+                }
+
+                if (g.valDetails) {
+                    totPts += g.valDetails.pts || 0;
+                    totFgm += g.valDetails.fg?.m || 0;
+                    totFga += g.valDetails.fg?.a || 0;
+                    tot3pm += g.valDetails.threePt?.m || 0;
+                    totFtm += g.valDetails.ft?.m || 0;
+                    totFta += g.valDetails.ft?.a || 0;
+                    totAst += g.valDetails.ast || 0;
+                    totTov += g.valDetails.tov || 0;
+                    totStl += g.valDetails.stl || 0;
+                    totBlk += g.valDetails.blk || 0;
+                }
             });
 
             const avgVal = gp > 0 ? (totalVal / gp) : 0;
@@ -597,6 +634,20 @@ permalink: /roster/
             const last3 = playedGames.slice(-3);
             const l3Val = last3.length > 0 ? (last3.reduce((acc, g) => acc + g.val, 0) / last3.length) : 0;
             const hitRate = gp > 0 ? Math.round((solidCount / gp) * 100) : 0;
+
+            const homeAvgVal = homeGames > 0 ? (homeValTotal / homeGames) : null;
+            const awayAvgVal = awayGames > 0 ? (awayValTotal / awayGames) : null;
+
+            const tsAttempts = totFga + (0.44 * totFta);
+            const tsPct = tsAttempts > 0 ? ((totPts / (2 * tsAttempts)) * 100) : null;
+            const netShootingTotal = totPts + tot3pm + (totFgm * 2) - totFga + totFtm - totFta;
+            const netShootingValPerGame = gp > 0 ? (netShootingTotal / gp) : 0;
+
+            const stocksPerGame = gp > 0 ? ((totStl + totBlk) / gp) : 0;
+            const astPerGame = gp > 0 ? (totAst / gp) : 0;
+            const tovPerGame = gp > 0 ? (totTov / gp) : 0;
+            const bonusValTotal = ((totStl + totBlk) * 4) + (totAst * 2) - (totTov * 2);
+            const bonusValPerGame = gp > 0 ? (bonusValTotal / gp) : 0;
 
             // Build chart points (use playedGames if teamSchedule has no overlap, else use teamSchedule timeline)
             const hasScheduleOverlap = teamSchedule.some(g => Boolean(playerStatsMap[g.id]));
@@ -654,6 +705,16 @@ permalink: /roster/
                 floorVal: gp > 0 ? minValScore : 0,
                 ceilVal: bestGame ? bestGame.val : 0,
                 hitRate,
+                homeGames,
+                homeAvgVal,
+                awayGames,
+                awayAvgVal,
+                tsPct,
+                netShootingValPerGame,
+                stocksPerGame,
+                astPerGame,
+                tovPerGame,
+                bonusValPerGame,
                 playedGames,
                 chartPoints
             };
@@ -702,33 +763,40 @@ permalink: /roster/
                 return `<div class="roster-empty-drawer">No completed game logs recorded for <strong>${escapeHtml(playerName)}</strong> yet this season.</div>`;
             }
 
-            const l3Diff = summary.l3Val - summary.avgVal;
-            const l3DiffSign = l3Diff >= 0 ? '+' : '';
-            const l3DiffClass = l3Diff >= 2 ? 'pill-sub-pos' : (l3Diff <= -2 ? 'pill-sub-neg' : '');
-            const bestSub = summary.bestGame ? `${summary.bestGame.vsAt} ${summary.bestGame.oppAbbrev} (${summary.bestGame.dateLabel})` : '-';
+            const homeValStr = summary.homeAvgVal !== null && summary.homeAvgVal !== undefined ? summary.homeAvgVal.toFixed(1) : '-';
+            const awayValStr = summary.awayAvgVal !== null && summary.awayAvgVal !== undefined ? summary.awayAvgVal.toFixed(1) : '-';
 
-            // 1. 4-Pill Summary Strip
+            const tsPctStr = summary.tsPct !== null && summary.tsPct !== undefined ? `${summary.tsPct.toFixed(1)}% TS` : 'N/A';
+            const netShotVal = summary.netShootingValPerGame || 0;
+            const netShotSign = netShotVal >= 0 ? '+' : '';
+            const netShotClass = netShotVal > 0 ? 'pill-sub-pos' : (netShotVal < 0 ? 'pill-sub-neg' : '');
+
+            const bonusVal = summary.bonusValPerGame || 0;
+            const bonusSign = bonusVal >= 0 ? '+' : '';
+            const bonusClass = bonusVal > 0 ? 'pill-sub-pos' : (bonusVal < 0 ? 'pill-sub-neg' : '');
+
+            // 1. 4-Pill Advanced Summary Strip
             const summaryStripHtml = `
                 <div class="roster-summary-strip">
                     <div class="roster-stat-pill">
-                        <span class="roster-pill-label">Season Avg VAL</span>
-                        <span class="roster-pill-value">${summary.avgVal.toFixed(1)}</span>
-                        <span class="roster-pill-sub">${summary.gp} GP · ${summary.mpg.toFixed(1)} MPG</span>
-                    </div>
-                    <div class="roster-stat-pill">
-                        <span class="roster-pill-label">Last 3 Avg VAL</span>
-                        <span class="roster-pill-value">${summary.l3Val.toFixed(1)}</span>
-                        <span class="roster-pill-sub ${l3DiffClass}">${l3DiffSign}${l3Diff.toFixed(1)} vs Season Avg</span>
-                    </div>
-                    <div class="roster-stat-pill">
-                        <span class="roster-pill-label">Season High VAL</span>
-                        <span class="roster-pill-value">${summary.ceilVal}</span>
-                        <span class="roster-pill-sub">${escapeHtml(bestSub)}</span>
-                    </div>
-                    <div class="roster-stat-pill">
                         <span class="roster-pill-label">Consistency (≥10 VAL)</span>
-                        <span class="roster-pill-value">${summary.hitRate}%</span>
+                        <span class="roster-pill-value">${summary.hitRate}% <small style="font-size:0.65em; font-weight:600; color:#888;">(${summary.gp} GP)</small></span>
                         <span class="roster-pill-sub">Floor: ${summary.floorVal} · Ceil: ${summary.ceilVal}</span>
+                    </div>
+                    <div class="roster-stat-pill">
+                        <span class="roster-pill-label">Home / Away VAL</span>
+                        <span class="roster-pill-value">${homeValStr} <span style="font-weight:400; color:#888;">/</span> ${awayValStr}</span>
+                        <span class="roster-pill-sub">Home (${summary.homeGames || 0}G) · Away (${summary.awayGames || 0}G)</span>
+                    </div>
+                    <div class="roster-stat-pill">
+                        <span class="roster-pill-label">Shooting Efficiency</span>
+                        <span class="roster-pill-value">${tsPctStr}</span>
+                        <span class="roster-pill-sub ${netShotClass}">${netShotSign}${netShotVal.toFixed(1)} Net Shot VAL/G</span>
+                    </div>
+                    <div class="roster-stat-pill">
+                        <span class="roster-pill-label">Stocks &amp; Playmaking</span>
+                        <span class="roster-pill-value ${bonusClass}">${bonusSign}${bonusVal.toFixed(1)} <small style="font-size:0.65em; font-weight:600;">VAL/G</small></span>
+                        <span class="roster-pill-sub">${(summary.stocksPerGame || 0).toFixed(1)} STL+BLK · ${(summary.astPerGame || 0).toFixed(1)} AST / ${(summary.tovPerGame || 0).toFixed(1)} TO</span>
                     </div>
                 </div>
             `;
