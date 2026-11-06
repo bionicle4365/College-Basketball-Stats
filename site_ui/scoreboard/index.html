@@ -94,7 +94,7 @@ permalink: /scoreboard/
             </div>
 
             <div class="val-footer-note">
-                💡 <em>Tip: Tap the <strong>ℹ️</strong> badge next to any player in the box score below to see their exact live point-by-point breakdown.</em>
+                💡 <em>Tip: Tap any player's name or <strong>VAL</strong> pill in the box score below to see their exact live point-by-point breakdown.</em>
             </div>
         </div>
     </div>
@@ -1880,7 +1880,7 @@ permalink: /scoreboard/
     // Map requested columns to API labels
     // API labels in 'names': MIN, PTS, REB, AST, STL, BLK, TO, PF
     // We need to find the index in the 'stats' array for each player
-    const targetStats = ['MIN', 'VAL/MIN', 'PTS', 'FG', '3PT', 'FT', 'REB', 'STL', 'AST', 'BLK', 'TO', 'PF'];
+    const targetStats = ['MIN', 'VPM', 'PTS', 'FG', '3PT', 'FT', 'REB', 'STL', 'AST', 'BLK', 'TO', 'PF'];
     
     const sortedPlayers = [...summary.boxscore.players].sort((a, b) => {
       return (a.team.id == TEAM_ID) ? -1 : (b.team.id == TEAM_ID) ? 1 : 0;
@@ -1919,20 +1919,22 @@ permalink: /scoreboard/
         const activeIndicator = player.active ? '🏀 ' : '';
         const minVal = minIdx !== -1 ? (parseFloat(stats[minIdx]) || 0) : 0;
         const valPerMinText = minVal > 0 ? (score / minVal).toFixed(2) : '-';
+        const valPillClass = score >= 15 ? 'val-pill-high' : (score >= 8 ? 'val-pill-mid' : (score < 0 ? 'val-pill-neg' : 'val-pill-low'));
         const cells = targetStats.map(stat => {
-          if (stat === 'VAL/MIN') {
-            return `<td>${valPerMinText}</td>`;
+          if (stat === 'VPM') {
+            return `<td class="col-stat-vpm">${valPerMinText}</td>`;
           }
           const idx = labels.indexOf(stat);
-          return `<td>${idx !== -1 ? escapeHtml(stats[idx] || '0') : '-'}</td>`;
+          const cellClass = stat === 'PTS' ? ' class="col-stat-pts"' : '';
+          return `<td${cellClass}>${idx !== -1 ? escapeHtml(stats[idx] || '0') : '-'}</td>`;
         }).join('');
         const tooltip = escapeHtml(getValTooltip(stats, labels));
 
         const isPicked = player.athlete && String(player.athlete.id) === String(pickedPlayerId);
         const rowClass = isPicked ? 'picked-row' : '';
         return `<tr class="${rowClass}">
-          <td class="col-val" style="font-weight:bold; cursor:pointer;" onclick="showValBreakdown(this)" data-player-name="${escapeHtml(fullName)}" data-player-sub="${escapeHtml(subInfo)}" data-val-details="${detailsJson}" data-breakdown="${tooltip}" title="Click to view VAL breakdown">${score}</td>
-          <td class="col-player" style="text-align:left; white-space:nowrap; cursor:pointer;" onclick="showValBreakdown(this)" data-player-name="${escapeHtml(fullName)}" data-player-sub="${escapeHtml(subInfo)}" data-val-details="${detailsJson}" data-breakdown="${tooltip}">${activeIndicator}${name} <span class="val-player-info-icon" title="View VAL breakdown">ℹ️</span></td>
+          <td class="col-val" onclick="showValBreakdown(this)" data-player-name="${escapeHtml(fullName)}" data-player-sub="${escapeHtml(subInfo)}" data-val-details="${detailsJson}" data-breakdown="${tooltip}" title="Click to view VAL breakdown"><span class="sb-box-val-badge ${valPillClass}">${score}</span></td>
+          <td class="col-player" onclick="showValBreakdown(this)" data-player-name="${escapeHtml(fullName)}" data-player-sub="${escapeHtml(subInfo)}" data-val-details="${detailsJson}" data-breakdown="${tooltip}" title="Click to view VAL breakdown"><div class="box-player-cell">${activeIndicator}<span class="box-player-name">${name}</span>${position ? `<span class="box-player-pos">${escapeHtml(position)}</span>` : ''}</div></td>
           ${cells}
         </tr>`;
       }).join('');
@@ -1942,7 +1944,7 @@ permalink: /scoreboard/
         <div id="team-stats-${index}" style="display: ${displayStyle};">
           <div class="stats-table-wrapper">
             <table class="stats-table">
-              <thead><tr><th class="col-val" onclick="showValFormulaModal(event)" style="cursor:pointer;" title="VAL (Value Rating) — Click to view formula">VAL <span class="val-header-badge" aria-label="Formula Info">ℹ️</span></th><th class="col-player" style="text-align:left;">Player</th>${targetStats.map(s => `<th>${s}</th>`).join('')}</tr></thead>
+              <thead><tr><th class="col-val" onclick="showValFormulaModal(event)" style="cursor:pointer;" title="VAL (Value Rating) — Click to view formula">VAL</th><th class="col-player" style="text-align:left;">Player</th>${targetStats.map(s => `<th${s === 'VPM' ? ' title="VAL Per Minute"' : ''}>${s}</th>`).join('')}</tr></thead>
               <tbody>${rows}</tbody>
             </table>
           </div>
@@ -1956,7 +1958,7 @@ permalink: /scoreboard/
       return `<button class="${activeClass}" data-team-index="${index}">${teamName}</button>`;
     }).join('');
 
-    return `<div class="controls boxscore-controls" style="margin-top: 10px; margin-bottom: 10px;"><div class="btn-group">${toggleButtons}</div><button type="button" class="val-formula-pill-btn" onclick="showValFormulaModal(event)" title="VAL Formula explanation">ℹ️ Formula</button></div>` + teamHtmls.join('');
+    return `<div class="controls boxscore-controls"><div class="btn-group">${toggleButtons}</div><button type="button" class="val-formula-pill-btn" onclick="showValFormulaModal(event)" title="How is VAL calculated?"><span class="formula-q-icon">?</span><span>VAL Formula</span></button></div>` + teamHtmls.join('');
   }
 
   // Event delegation on game-display

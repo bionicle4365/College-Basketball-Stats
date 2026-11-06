@@ -3142,3 +3142,332 @@ body.dark-mode .roster-minilog-table td {
         margin-left: 1px;
     }
 }
+
+
+/* ==========================================================================
+   Scoreboard Box Score & Formula Button Redesign
+   ========================================================================== */
+.boxscore-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 10px;
+    margin: 16px 0 10px 0 !important;
+}
+
+.boxscore-controls .btn-group {
+    display: inline-flex;
+    width: auto;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 3px;
+    gap: 2px;
+}
+body.dark-mode .boxscore-controls .btn-group {
+    background: #18181b;
+    border-color: #333338;
+}
+
+.boxscore-controls .btn-group button {
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 16px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #64748b;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+    line-height: 1.2;
+}
+body.dark-mode .boxscore-controls .btn-group button {
+    color: #9ca3af;
+}
+.boxscore-controls .btn-group button:hover:not(.active) {
+    color: #1e293b;
+    background: rgba(0, 0, 0, 0.04);
+}
+body.dark-mode .boxscore-controls .btn-group button:hover:not(.active) {
+    color: #f3f4f6;
+    background: rgba(255, 255, 255, 0.06);
+}
+.boxscore-controls .btn-group button.active {
+    background: #cc0000;
+    color: #ffffff !important;
+    box-shadow: 0 1px 4px rgba(204, 0, 0, 0.35);
+}
+
+.val-formula-pill-btn {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    color: #334155;
+    font-size: 0.8rem;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    flex-shrink: 0;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+    transition: all 0.15s ease;
+}
+.val-formula-pill-btn:hover {
+    background-color: #f8fafc;
+    border-color: #cbd5e1;
+    color: #0f172a;
+}
+body.dark-mode .val-formula-pill-btn {
+    background-color: #242427;
+    border-color: #38383d;
+    color: #e2e8f0;
+}
+body.dark-mode .val-formula-pill-btn:hover {
+    background-color: #2e2e33;
+    border-color: #4b5563;
+    color: #ffffff;
+}
+
+.formula-q-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background-color: rgba(204, 0, 0, 0.12);
+    color: #cc0000;
+    font-size: 0.72rem;
+    font-weight: 800;
+    line-height: 1;
+}
+body.dark-mode .formula-q-icon {
+    background-color: rgba(255, 107, 107, 0.18);
+    color: #ff6b6b;
+}
+
+/* Upgraded Box Score Table */
+.stats-table-wrapper {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+    overflow-x: auto;
+    margin-top: 8px;
+}
+body.dark-mode .stats-table-wrapper {
+    border-color: #333338;
+    box-shadow: none;
+}
+
+.stats-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin-top: 0;
+    font-size: 0.85rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.stats-table thead th {
+    background-color: #f8fafc !important;
+    color: #64748b !important;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 9px 8px;
+    border-bottom: 1px solid #e2e8f0 !important;
+}
+body.dark-mode .stats-table thead th {
+    background-color: #242427 !important;
+    color: #9ca3af !important;
+    border-bottom-color: #38383d !important;
+}
+
+.stats-table tbody td {
+    padding: 8px 8px;
+    border-bottom: 1px solid #f1f5f9;
+    color: #334155;
+}
+body.dark-mode .stats-table tbody td {
+    border-bottom-color: #2a2a2e !important;
+    color: #d1d5db;
+}
+.stats-table tbody tr:last-child td {
+    border-bottom: none !important;
+}
+.stats-table tbody tr:hover td {
+    background-color: #f8fafc;
+}
+body.dark-mode .stats-table tbody tr:hover td {
+    background-color: #252529 !important;
+}
+
+.stats-table th.col-val,
+.stats-table td.col-val {
+    position: sticky;
+    left: 0;
+    z-index: 4;
+    width: 52px !important;
+    min-width: 52px !important;
+    max-width: 52px !important;
+    padding: 7px 4px !important;
+    text-align: center;
+    border-right: 1px solid #f1f5f9;
+    box-sizing: border-box;
+    cursor: pointer;
+}
+body.dark-mode .stats-table th.col-val,
+body.dark-mode .stats-table td.col-val {
+    border-right-color: #2a2a2e;
+}
+
+.stats-table th.col-player,
+.stats-table td.col-player {
+    position: sticky;
+    left: 52px !important;
+    z-index: 4;
+    min-width: 145px !important;
+    max-width: 185px !important;
+    padding: 7px 10px !important;
+    border-right: 1px solid #e2e8f0;
+    box-shadow: 2px 0 5px -2px rgba(0, 0, 0, 0.06);
+    box-sizing: border-box;
+    cursor: pointer;
+}
+body.dark-mode .stats-table th.col-player,
+body.dark-mode .stats-table td.col-player {
+    border-right-color: #38383d;
+    box-shadow: 2px 0 6px -2px rgba(0, 0, 0, 0.4);
+}
+
+.stats-table tbody tr:hover td.col-val,
+.stats-table tbody tr:hover td.col-player {
+    background-color: #f8fafc !important;
+}
+body.dark-mode .stats-table tbody tr:hover td.col-val,
+body.dark-mode .stats-table tbody tr:hover td.col-player {
+    background-color: #252529 !important;
+}
+
+.box-player-cell {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.box-player-name {
+    font-weight: 600;
+    color: #0f172a;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+body.dark-mode .box-player-name {
+    color: #f3f4f6;
+}
+.stats-table td.col-player:hover .box-player-name {
+    color: #cc0000;
+    text-decoration: underline;
+}
+body.dark-mode .stats-table td.col-player:hover .box-player-name {
+    color: #ff6b6b;
+}
+.box-player-pos {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #94a3b8;
+    flex-shrink: 0;
+}
+body.dark-mode .box-player-pos {
+    color: #6b7280;
+}
+
+.sb-box-val-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 34px;
+    padding: 2px 7px;
+    border-radius: 9999px;
+    font-weight: 800;
+    font-size: 0.8rem;
+    line-height: 1.25;
+    font-variant-numeric: tabular-nums;
+    transition: transform 0.12s ease;
+}
+.stats-table td.col-val:hover .sb-box-val-badge {
+    transform: scale(1.06);
+}
+.val-pill-neg {
+    background-color: #fef2f2;
+    color: #b91c1c;
+    border: 1px solid #fecaca;
+}
+body.dark-mode .val-pill-neg {
+    background-color: #7f1d1d;
+    color: #f87171;
+    border-color: #991b1b;
+}
+
+.stats-table td.col-stat-pts {
+    font-weight: 700;
+    color: #0f172a;
+}
+body.dark-mode .stats-table td.col-stat-pts {
+    color: #f3f4f6;
+}
+.stats-table td.col-stat-vpm {
+    color: #64748b;
+    font-size: 0.8rem;
+}
+body.dark-mode .stats-table td.col-stat-vpm {
+    color: #9ca3af;
+}
+
+@media (max-width: 600px) {
+    .boxscore-controls .btn-group {
+        width: auto !important;
+        flex: 0 1 auto;
+    }
+    .boxscore-controls .btn-group button {
+        padding: 6px 14px;
+        font-size: 0.8rem;
+    }
+    .val-formula-pill-btn {
+        padding: 6px 10px;
+        font-size: 0.76rem;
+    }
+    .stats-table thead th {
+        padding: 8px 6px !important;
+        font-size: 0.69rem !important;
+    }
+    .stats-table tbody td {
+        padding: 7px 6px !important;
+        font-size: 0.8rem !important;
+    }
+    .stats-table th.col-val,
+    .stats-table td.col-val {
+        width: 44px !important;
+        min-width: 44px !important;
+        max-width: 44px !important;
+        padding: 6px 2px !important;
+    }
+    .stats-table th.col-player,
+    .stats-table td.col-player {
+        left: 44px !important;
+        min-width: 122px !important;
+        max-width: 142px !important;
+        padding: 6px 7px !important;
+    }
+    .sb-box-val-badge {
+        min-width: 30px;
+        padding: 2px 5px;
+        font-size: 0.75rem;
+    }
+}
