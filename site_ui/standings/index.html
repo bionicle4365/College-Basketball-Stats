@@ -4,7 +4,8 @@ title: Standings
 permalink: /standings/
 ---
 <div class="standings-container">
-    <h2 id="conf-name">Conference Standings</h2>
+    <h2 id="conf-name" style="margin-bottom: 4px;">Conference Standings</h2>
+    <p class="roster-subtitle" style="margin-top: 0; margin-bottom: 14px;">Tap any team to inspect their Quadrant W-L record, BPI/SOS ranks, and season stats.</p>
     <div id="standings-content">
         <div class="loading">Loading standings...</div>
     </div>
@@ -14,11 +15,17 @@ permalink: /standings/
     checkAuth();
 
     const { teamId: TEAM_ID, sportPath: SPORT_PATH } = getAppContext();
+    const standingsEntryByTeamId = {};
+    const teamScheduleCache = {};
+    const renderedDrawerCache = {};
+    let globalBpiMap = {};
 
-    // Fetch Standings
-    fetch(`https://site.api.espn.com/apis/v2/sports/basketball/${SPORT_PATH}/standings`)
-        .then(r => r.json())
-        .then(data => {
+    Promise.all([
+        fetch(`https://site.api.espn.com/apis/v2/sports/basketball/${SPORT_PATH}/standings`).then(r => r.json()),
+        fetchBpiAndResumeMap(SPORT_PATH).catch(() => ({}))
+    ])
+        .then(([data, bpiMap]) => {
+            globalBpiMap = bpiMap || {};
             let standings = [];
             let confName = data.name || 'Conference Standings';
 
@@ -68,26 +75,262 @@ permalink: /standings/
 
             standings.forEach((entry, index) => {
                 const team = entry.team || {};
+                const tId = String(team.id || index).replace(/[^a-zA-Z0-9_-]/g, '');
+                standingsEntryByTeamId[tId] = entry;
+
                 const stats = entry.stats || [];
-                const apRank = team.rank ? escapeHtml(team.rank) + ' ' : '';
+                const apRank = team.rank ? `<span class="standings-ap-rank">#${escapeHtml(team.rank)}</span> ` : '';
                 const confRank = stats.find(r => r.type === 'playoffseed');
                 const isMyTeam = String(team.id) === String(TEAM_ID);
                 const confRecord = stats.find(r => r.type === 'vsconf') || { summary: '-' };
                 const overallRecord = stats.find(r => r.type === 'total') || { summary: '-' };
 
-                html += `<tr class="${isMyTeam ? 'highlight-team' : ''}">
+                html += `<tr class="standings-team-row ${isMyTeam ? 'highlight-team' : ''}" data-team-id="${tId}" style="cursor: pointer;">
                     <td>${confRank ? escapeHtml(confRank.displayValue) : (index + 1)}</td>
-                    <td>${getTeamLogoHtml(team)} ${apRank}${escapeHtml(team.shortDisplayName || team.displayName || 'Unknown')}</td>
+                    <td>
+                        <div class="standings-team-cell">
+                            ${getTeamLogoHtml(team)}
+                            <span class="standings-team-name-text">${apRank}${escapeHtml(team.shortDisplayName || team.displayName || 'Unknown')}</span>
+                            <span class="expand-chevron">▸</span>
+                        </div>
+                    </td>
                     <td>${escapeHtml(confRecord.summary)}</td>
                     <td>${escapeHtml(overallRecord.summary)}</td>
+                </tr>
+                <tr id="standings-drawer-${tId}" class="stats-row" style="display: none;">
+                    <td colspan="4" class="stats-drawer-cell">
+                        <div id="standings-drawer-content-${tId}">
+                            <div class="loading" style="padding: 12px;">Loading quadrant &amp; team stats...</div>
+                        </div>
+                    </td>
                 </tr>`;
             });
 
             html += '</tbody></table>';
-            document.getElementById('standings-content').innerHTML = html;
+            const contentEl = document.getElementById('standings-content');
+            contentEl.innerHTML = html;
+
+            contentEl.addEventListener('click', (e) => {
+                const row = e.target.closest('.standings-team-row');
+                if (row && row.dataset.teamId) {
+                    toggleTeamStandingsDrawer(row.dataset.teamId, row);
+                }
+            });
         })
         .catch(err => {
             console.error(err);
             document.getElementById('standings-content').innerHTML = '<div class="error">Failed to load standings.</div>';
         });
+
+    function getStandingsStatDisplay(stats, typeName, fallback = '-') {
+        if (!Array.isArray(stats)) return fallback;
+        const found = stats.find(s => s.type === typeName || s.name === typeName);
+        if (!found) return fallback;
+        return found.summary || found.displayValue || (found.value !== undefined ? String(found.value) : fallback);
+    }
+
+    async function toggleTeamStandingsDrawer(teamId, rowEl) {
+        const drawerRow = document.getElementById(`standings-drawer-${teamId}`);
+        const contentEl = document.getElementById(`standings-drawer-content-${teamId}`);
+        if (!drawerRow || !contentEl) return;
+
+        const isHidden = drawerRow.style.display === 'none';
+        if (!isHidden) {
+            drawerRow.style.display = 'none';
+            if (rowEl) rowEl.classList.remove('expanded');
+            return;
+        }
+
+        drawerRow.style.display = 'table-row';
+        if (rowEl) rowEl.classList.add('expanded');
+
+        if (renderedDrawerCache[teamId]) {
+            contentEl.innerHTML = renderedDrawerCache[teamId];
+            return;
+        }
+
+        try {
+            const schedPromise = teamScheduleCache[teamId]
+                ? Promise.resolve(teamScheduleCache[teamId])
+                : fetchTeamSchedule(SPORT_PATH, teamId).then(d => {
+                    teamScheduleCache[teamId] = d;
+                    return d;
+                });
+
+            const [schedData, seasonStats, bpiMap] = await Promise.all([
+                schedPromise.catch(() => ({ events: [] })),
+                fetchTeamSeasonStats(SPORT_PATH, teamId).catch(() => null),
+                Object.keys(globalBpiMap).length > 0 ? Promise.resolve(globalBpiMap) : fetchBpiAndResumeMap(SPORT_PATH).catch(() => ({}))
+            ]);
+
+            globalBpiMap = bpiMap || globalBpiMap;
+            const entry = standingsEntryByTeamId[teamId] || {};
+            const entryStats = entry.stats || [];
+            const teamBpi = globalBpiMap[String(teamId)] || null;
+            const quads = calculateScheduleQuadSummary(schedData?.events || [], teamId, globalBpiMap);
+
+            const ppg = (seasonStats && seasonStats.ppg !== '-') ? seasonStats.ppg : getStandingsStatDisplay(entryStats, 'avgpointsfor', '-');
+            const oppPpg = getStandingsStatDisplay(entryStats, 'avgpointsagainst', '-');
+            const pointDiff = getStandingsStatDisplay(entryStats, 'pointdifferential', '-');
+            const homeRec = getStandingsStatDisplay(entryStats, 'home', '-');
+            const roadRec = getStandingsStatDisplay(entryStats, 'road', '-');
+            const vsApRec = getStandingsStatDisplay(entryStats, 'vsaprankedteams', '0-0');
+            const streak = getStandingsStatDisplay(entryStats, 'streak', '-');
+
+            const ppgNum = parseFloat(ppg);
+            const oppPpgNum = parseFloat(oppPpg);
+            let avgMarginStr = `Total Diff: ${escapeHtml(pointDiff)}`;
+            let marginClass = '';
+            if (!isNaN(ppgNum) && !isNaN(oppPpgNum) && (ppgNum > 0 || oppPpgNum > 0)) {
+                const diff = ppgNum - oppPpgNum;
+                const sign = diff > 0 ? '+' : '';
+                avgMarginStr = `${sign}${diff.toFixed(1)} avg margin`;
+                marginClass = diff > 0 ? 'pill-sub-pos' : (diff < 0 ? 'pill-sub-neg' : '');
+            }
+
+            const quadCutoffs = {
+                1: 'H 1–30 · N 1–50 · A 1–75',
+                2: 'H 31–75 · N 51–100 · A 76–135',
+                3: 'H 76–160 · N 101–200 · A 136–240',
+                4: 'H 161+ · N 201+ · A 241+'
+            };
+
+            const quadCardsHtml = [1, 2, 3, 4].map(q => {
+                const qData = quads[q] || { w: 0, l: 0, rem: 0, pct: null };
+                const pctStr = qData.pct !== null ? `${qData.pct}%` : '-';
+                const pctClass = qData.pct === null ? '' : (qData.pct >= 50 ? 'pill-sub-pos' : 'pill-sub-neg');
+                const remStr = qData.rem > 0 ? `${qData.rem} left` : '0 left';
+                return `
+                    <div class="standings-quad-card">
+                        <div class="standings-quad-top">
+                            <span class="quad-pill quad-pill-q${q}">Q${q}</span>
+                            <span class="standings-quad-pct ${pctClass}">${pctStr}</span>
+                        </div>
+                        <div class="standings-quad-record">${qData.w}-${qData.l}</div>
+                        <div class="standings-quad-meta">
+                            <span>${remStr}</span>
+                            <span class="standings-quad-cutoff" title="${escapeHtml(quadCutoffs[q])}">${escapeHtml(quadCutoffs[q])}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            const bpiRankLabel = teamBpi ? `#${escapeHtml(teamBpi.rank)}` : '-';
+            const bpiSubLabel = teamBpi
+                ? (teamBpi.source === 'BPI' && teamBpi.offRank !== '-'
+                    ? `BPI ${escapeHtml(teamBpi.bpi)} · Off ${escapeHtml(teamBpi.offRank)} / Def ${escapeHtml(teamBpi.defRank)}`
+                    : `Power Rating: ${escapeHtml(teamBpi.bpi)}`)
+                : 'National Rank';
+
+            const sosRankLabel = (teamBpi && teamBpi.sosRank && teamBpi.sosRank !== '-') ? escapeHtml(teamBpi.sosRank) : '-';
+            const sosSubLabel = (teamBpi && (teamBpi.sorRank !== '-' || teamBpi.remSosRank !== '-'))
+                ? `SOR: ${escapeHtml(teamBpi.sorRank)} · Rem SOS: ${escapeHtml(teamBpi.remSosRank)}`
+                : `vs AP Top 25: ${escapeHtml(vsApRec)}`;
+
+            const fgPct = seasonStats?.fgPct || '-';
+            const threePtPct = seasonStats?.threePtPct || '-';
+            const threePm = (seasonStats?.threePm && seasonStats.threePm !== '-') ? `${escapeHtml(seasonStats.threePm)} 3PM/g` : '3-Point %';
+            const ftPct = seasonStats?.ftPct || '-';
+            const reb = seasonStats?.reb || '-';
+            const rebSub = (seasonStats?.orb && seasonStats.orb !== '-' && seasonStats?.drb && seasonStats.drb !== '-')
+                ? `${escapeHtml(seasonStats.orb)} OR · ${escapeHtml(seasonStats.drb)} DR`
+                : 'Rebounds / Game';
+            const ast = seasonStats?.ast || '-';
+            const astSub = (seasonStats?.astToRatio && seasonStats.astToRatio !== '-')
+                ? `${escapeHtml(seasonStats.astToRatio)} AST/TO`
+                : 'Assists / Game';
+            const tov = seasonStats?.to || '-';
+            const defSub = (seasonStats?.stl && seasonStats.stl !== '-' && seasonStats?.blk && seasonStats.blk !== '-')
+                ? `${escapeHtml(seasonStats.stl)} STL · ${escapeHtml(seasonStats.blk)} BLK`
+                : 'Turnovers / Game';
+
+            const rankSourceLabel = (teamBpi && teamBpi.source === 'PWR') ? 'ESPN Standings Power Rank' : 'ESPN BPI';
+
+            const drawerHtml = `
+                <div class="roster-drawer-inner standings-drawer-inner">
+                    <div>
+                        <div class="roster-section-header" style="margin-bottom: 6px;">
+                            <span class="roster-section-title">Quadrant Win-Loss Breakdown</span>
+                            <span class="roster-minilog-hint">via ${escapeHtml(rankSourceLabel)}</span>
+                        </div>
+                        <div class="standings-quad-grid">
+                            ${quadCardsHtml}
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="roster-section-header" style="margin-bottom: 6px;">
+                            <span class="roster-section-title">Rankings &amp; Schedule Splits</span>
+                        </div>
+                        <div class="roster-summary-strip">
+                            <div class="roster-stat-pill">
+                                <span class="roster-pill-label">${teamBpi?.source === 'PWR' ? 'Power Rank' : 'BPI Rank'}</span>
+                                <span class="roster-pill-value">${bpiRankLabel}</span>
+                                <span class="roster-pill-sub">${bpiSubLabel}</span>
+                            </div>
+                            <div class="roster-stat-pill">
+                                <span class="roster-pill-label">SOS Rank</span>
+                                <span class="roster-pill-value">${sosRankLabel}</span>
+                                <span class="roster-pill-sub">${sosSubLabel}</span>
+                            </div>
+                            <div class="roster-stat-pill">
+                                <span class="roster-pill-label">Home / Road</span>
+                                <span class="roster-pill-value" style="font-size: 1.05rem;">${escapeHtml(homeRec)} / ${escapeHtml(roadRec)}</span>
+                                <span class="roster-pill-sub">vs AP Top 25: ${escapeHtml(vsApRec)}</span>
+                            </div>
+                            <div class="roster-stat-pill">
+                                <span class="roster-pill-label">Current Streak</span>
+                                <span class="roster-pill-value">${escapeHtml(streak)}</span>
+                                <span class="roster-pill-sub ${marginClass}">${avgMarginStr}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="roster-section-header" style="margin-bottom: 6px;">
+                            <span class="roster-section-title">Team Season Stats</span>
+                        </div>
+                        <div class="standings-team-stats-grid">
+                            <div class="roster-stat-pill">
+                                <span class="roster-pill-label">PPG / Opp PPG</span>
+                                <span class="roster-pill-value" style="font-size: 1.08rem;">${escapeHtml(ppg)} <span style="color:#888; font-weight:500;">/</span> ${escapeHtml(oppPpg)}</span>
+                                <span class="roster-pill-sub ${marginClass}">${avgMarginStr}</span>
+                            </div>
+                            <div class="roster-stat-pill">
+                                <span class="roster-pill-label">FG% / FT%</span>
+                                <span class="roster-pill-value" style="font-size: 1.08rem;">${escapeHtml(fgPct)} <span style="color:#888; font-weight:500;">/</span> ${escapeHtml(ftPct)}</span>
+                                <span class="roster-pill-sub">Field Goal &amp; Free Throw %</span>
+                            </div>
+                            <div class="roster-stat-pill">
+                                <span class="roster-pill-label">3-Point %</span>
+                                <span class="roster-pill-value" style="font-size: 1.08rem;">${escapeHtml(threePtPct)}</span>
+                                <span class="roster-pill-sub">${threePm}</span>
+                            </div>
+                            <div class="roster-stat-pill">
+                                <span class="roster-pill-label">Rebounds / G</span>
+                                <span class="roster-pill-value" style="font-size: 1.08rem;">${escapeHtml(reb)}</span>
+                                <span class="roster-pill-sub">${rebSub}</span>
+                            </div>
+                            <div class="roster-stat-pill">
+                                <span class="roster-pill-label">Assists / G</span>
+                                <span class="roster-pill-value" style="font-size: 1.08rem;">${escapeHtml(ast)}</span>
+                                <span class="roster-pill-sub">${astSub}</span>
+                            </div>
+                            <div class="roster-stat-pill">
+                                <span class="roster-pill-label">Turnovers &amp; Def</span>
+                                <span class="roster-pill-value" style="font-size: 1.08rem;">${escapeHtml(tov)} <span style="font-size:0.78rem; font-weight:600; color:#888;">TO/g</span></span>
+                                <span class="roster-pill-sub">${defSub}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            renderedDrawerCache[teamId] = drawerHtml;
+            contentEl.innerHTML = drawerHtml;
+        } catch (err) {
+            console.error(`Error loading drawer for team ${teamId}:`, err);
+            contentEl.innerHTML = '<div class="error" style="padding: 10px;">Unable to load team details.</div>';
+        }
+    }
 </script>
