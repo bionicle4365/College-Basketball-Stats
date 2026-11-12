@@ -110,9 +110,22 @@ permalink: /scoreboard/
   let USER_UID = isMock ? 'mock-user-123' : null;
 
   const ENDPOINTS = {
-    mens: 'https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard',
-    womens: 'https://site.api.espn.com/apis/site/v2/sports/basketball/womens-college-basketball/scoreboard'
+    mens: 'https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/scoreboard?groups=50&limit=200',
+    womens: 'https://site.api.espn.com/apis/site/v2/sports/basketball/womens-college-basketball/scoreboard?groups=50&limit=200'
   };
+
+  function getSummaryUrl(type, eventId) {
+    const sportPath = getSportPath(type);
+    return `https://site.api.espn.com/apis/site/v2/sports/basketball/${sportPath}/summary?event=${encodeURIComponent(eventId)}`;
+  }
+
+  function hasTipoffPassed(gameDateStr) {
+    if (!gameDateStr) return false;
+    const targetTime = new Date(gameDateStr).getTime();
+    if (isNaN(targetTime)) return false;
+    const elapsed = Date.now() - targetTime;
+    return elapsed >= 0 && elapsed < 4 * 60 * 60 * 1000;
+  }
 
   function showValBreakdown(target) {
       const element = (target && target.nodeType) ? target : (target && target.currentTarget ? target.currentTarget : null);
@@ -499,6 +512,7 @@ permalink: /scoreboard/
       if (!gameDateStr) return;
       const targetTime = new Date(gameDateStr).getTime();
       if (isNaN(targetTime)) return;
+      const startedBeforeTipoff = (targetTime - Date.now()) > 0;
 
       function update() {
           const now = Date.now();
@@ -531,8 +545,12 @@ permalink: /scoreboard/
                   messageEl.style.color = '#888';
               }
               stopPickCountdown();
+              const activeLeague = localStorage.getItem('league') || 'mens';
+              startLivePolling(activeLeague);
               // Seamlessly transition to live picks and stats when deadline expires
-              loadStats(localStorage.getItem('league') || 'mens', true);
+              if (startedBeforeTipoff) {
+                  loadStats(activeLeague, true);
+              }
               return;
           }
 
@@ -969,10 +987,12 @@ permalink: /scoreboard/
     const gameId = (rawGameId && /^[0-9]+$/.test(rawGameId.trim())) ? rawGameId.trim() : null;
 
     if (gameId) {
-        const summaryUrl = ENDPOINTS[type].replace('scoreboard', 'summary') + '?event=' + encodeURIComponent(gameId);
+        const summaryUrl = getSummaryUrl(type, gameId);
         fetch(summaryUrl).then(r => r.json()).then(summary => {
-            const state = summary.header.competitions[0].status.type.state;
-            if (state === 'in') {
+            const comp = summary?.header?.competitions?.[0];
+            const state = comp?.status?.type?.state || 'pre';
+            const gameDate = comp?.date || summary?.header?.date;
+            if (state === 'in' || (state === 'pre' && hasTipoffPassed(gameDate))) {
                 const banner = document.getElementById('game-banner');
                 if (banner) banner.style.display = 'none';
                 if (typeof bannerCountdownInterval !== 'undefined' && bannerCountdownInterval) {
@@ -1013,26 +1033,38 @@ permalink: /scoreboard/
         const events = data.events || [];
         // Find the game involving user's team
         const game = events.find(evt => 
-          evt.competitions[0].competitors.some(comp => comp.team.id === TEAM_ID)
+          evt.competitions[0].competitors.some(comp => String(comp.team.id) === String(TEAM_ID))
         );
 
         // If game is live or final today, show it
         if (game) {
           const state = game.status.type.state;
-          if (state === 'in') {
+          const tipoffPassed = hasTipoffPassed(game.date || game.competitions?.[0]?.date);
+          if (state === 'in' || (state === 'pre' && tipoffPassed)) {
             startLivePolling(type);
           } else {
             stopLivePolling();
           }
 
-          if (state === 'in' || state === 'post') {
-            const summaryUrl = ENDPOINTS[type].replace('scoreboard', 'summary') + '?event=' + game.id;
+          if (state === 'in' || state === 'post' || (state === 'pre' && tipoffPassed)) {
+            const summaryUrl = getSummaryUrl(type, game.id);
             return Promise.all([
-                fetch(summaryUrl).then(r => r.json()),
+                fetch(summaryUrl).then(r => r.json()).catch(() => null),
                 fetchPick(game.id, type),
                 loadUserGroups(TEAM_ID, type),
-                getCachedRoster(type, TEAM_ID)
-            ]).then(([summary, pickedPlayerId, _, rosterData]) => renderGame(game, summary, null, pickedPlayerId, rosterData, type));
+                getCachedRoster(type, TEAM_ID),
+                state === 'pre' ? loadCooldownInfo(game.id, type) : Promise.resolve(null)
+            ]).then(([summary, pickedPlayerId, _, rosterData, cooldownInfo]) => {
+                if (rosterData && cooldownInfo) {
+                    updateCooldownPlayerNames(cooldownInfo, rosterData);
+                }
+                const headerEvent = (summary && summary.header && summary.header.competitions) ? summary.header : game;
+                const effectiveState = headerEvent.competitions?.[0]?.status?.type?.state || state;
+                if (effectiveState === 'in') {
+                    startLivePolling(type);
+                }
+                renderGame(headerEvent, summary, null, pickedPlayerId, rosterData, type);
+            });
           } else if (state === 'pre') {
              return Promise.all([
                  fetchPick(game.id, type),
@@ -1059,12 +1091,12 @@ permalink: /scoreboard/
             // Priority: 1. Game in progress
             let targetGame = events.find(e => e.competitions[0].status.type.state === 'in');
             
-            // 2. Game happening later today
+            // 2. Game happening today (or whose tip-off window is currently active)
             if (!targetGame) {
                 targetGame = events.find(e => {
                     const state = e.competitions[0].status.type.state;
                     const gameDate = new Date(e.date);
-                    return state === 'pre' && gameDate.toDateString() === today.toDateString();
+                    return state === 'pre' && (gameDate.toDateString() === today.toDateString() || hasTipoffPassed(e.date));
                 });
             }
 
@@ -1087,14 +1119,15 @@ permalink: /scoreboard/
             
             const nextGame = events.find(e => e.competitions[0].status.type.state === 'pre' && e.id !== targetGame.id);
             const state = targetGame.competitions[0].status.type.state;
+            const tipoffPassed = hasTipoffPassed(targetGame.date || targetGame.competitions?.[0]?.date);
             
-            if (state === 'in') {
+            if (state === 'in' || (state === 'pre' && tipoffPassed)) {
                 startLivePolling(type);
             } else {
                 stopLivePolling();
             }
 
-            if (state === 'pre') {
+            if (state === 'pre' && !tipoffPassed) {
                  return Promise.all([
                      fetchPick(targetGame.id, type),
                      getCachedRoster(type, TEAM_ID),
@@ -1107,13 +1140,24 @@ permalink: /scoreboard/
                      renderGame(targetGame, null, nextGame, pickedPlayerId, rosterData, type);
                  });
             } else {
-                const summaryUrl = ENDPOINTS[type].replace('scoreboard', 'summary') + '?event=' + targetGame.id;
+                const summaryUrl = getSummaryUrl(type, targetGame.id);
                 return Promise.all([
-                    fetch(summaryUrl).then(r => r.json()),
+                    fetch(summaryUrl).then(r => r.json()).catch(() => null),
                     fetchPick(targetGame.id, type),
                     loadUserGroups(TEAM_ID, type),
-                    getCachedRoster(type, TEAM_ID)
-                ]).then(([summary, pickedPlayerId, _, rosterData]) => renderGame(summary.header, summary, nextGame, pickedPlayerId, rosterData, type));
+                    getCachedRoster(type, TEAM_ID),
+                    state === 'pre' ? loadCooldownInfo(targetGame.id, type) : Promise.resolve(null)
+                ]).then(([summary, pickedPlayerId, _, rosterData, cooldownInfo]) => {
+                    if (rosterData && cooldownInfo) {
+                        updateCooldownPlayerNames(cooldownInfo, rosterData);
+                    }
+                    const headerEvent = (summary && summary.header && summary.header.competitions) ? summary.header : targetGame;
+                    const effectiveState = headerEvent.competitions?.[0]?.status?.type?.state || state;
+                    if (effectiveState === 'in' || (effectiveState === 'pre' && tipoffPassed)) {
+                        startLivePolling(type);
+                    }
+                    renderGame(headerEvent, summary, nextGame, pickedPlayerId, rosterData, type);
+                });
             }
           });
       })
@@ -1330,7 +1374,7 @@ permalink: /scoreboard/
                     <p>Join or create a group for ${escapeHtml(teamName)} to track live rankings on this scoreboard.</p>
                   </div>
                 </div>
-                <a href="/College-Basketball-Stats/groups" class="btn btn-primary btn-sm sb-group-empty-btn">Explore Groups &rarr;</a>
+                <a href="/College-Basketball-Stats/groups/" class="btn btn-primary btn-sm sb-group-empty-btn">Explore Groups &rarr;</a>
               </div>
             </div>
           `;
@@ -1439,7 +1483,7 @@ permalink: /scoreboard/
               </div>
               <div class="sb-group-footer">
                 <span style="color:#888; font-size:0.78rem;">Player picks are hidden until tip-off to prevent copying</span>
-                <a href="/College-Basketball-Stats/groups#${escapeHtml(activeGroup.id)}">Group Standings &rarr;</a>
+                <a href="/College-Basketball-Stats/groups/#${escapeHtml(activeGroup.id)}">Group Standings &rarr;</a>
               </div>
             </div>
           `;
@@ -1577,7 +1621,7 @@ permalink: /scoreboard/
           </div>
           <div class="sb-group-footer">
             <span style="color:#888; font-size:0.78rem;">Live efficiency VAL scores recalculate during play</span>
-            <a href="/College-Basketball-Stats/groups#${escapeHtml(activeGroup.id)}">Season Standings &rarr;</a>
+            <a href="/College-Basketball-Stats/groups/#${escapeHtml(activeGroup.id)}">Season Standings &rarr;</a>
           </div>
         </div>
       `;
@@ -1805,8 +1849,8 @@ permalink: /scoreboard/
   }
 
   function renderTeamStats(team1, team2, rosterData, pickedPlayerId, gameId, state, gameDate) {
-    // If no stats available (e.g. pre-game), return empty or basic record info
-    if (state === 'pre' || !team1.statistics || team1.statistics.length === 0) {
+    // Pre-game: show player pick'em selector
+    if (state === 'pre') {
       if (rosterData) {
           return renderPlayerPicker(rosterData, pickedPlayerId, gameId, gameDate, currentCooldownInfo);
       }
@@ -1814,6 +1858,16 @@ permalink: /scoreboard/
         <p>Game has not started.</p>
         <p>${escapeHtml(team1.team.abbreviation)}: ${escapeHtml(getRecord(team1) || 'N/A')} | ${escapeHtml(team2.team.abbreviation)}: ${escapeHtml(getRecord(team2) || 'N/A')}</p>
       </div>`;
+    }
+
+    if (!team1.statistics || team1.statistics.length === 0) {
+      return `
+        <div class="live-stats-pending-notice" style="text-align: center; padding: 24px 16px; color: #aaa; background: rgba(128,128,128,0.06); border: 1px dashed rgba(128,128,128,0.25); border-radius: 10px; margin-top: 12px;">
+          <div style="font-size: 1.4rem; margin-bottom: 6px;">📊</div>
+          <div style="font-weight: 600; margin-bottom: 4px;">Live Box Score Stats Pending from ESPN</div>
+          <div style="font-size: 0.85rem; color: #888;">ESPN is reporting live score and game clock updates, but detailed box score statistics have not been posted for this game yet. Auto-refreshing every 30s.</div>
+        </div>
+      `;
     }
 
     // Helper to find stat value by name
@@ -1940,6 +1994,17 @@ permalink: /scoreboard/
       }).join('');
 
       const displayStyle = index === 0 ? 'block' : 'none';
+      if (playersWithVal.length === 0) {
+        return `
+          <div id="team-stats-${index}" style="display: ${displayStyle};">
+            <div class="live-stats-pending-notice" style="text-align: center; padding: 24px 16px; color: #aaa; background: rgba(128,128,128,0.06); border: 1px dashed rgba(128,128,128,0.25); border-radius: 10px; margin-top: 10px;">
+              <div style="font-size: 1.4rem; margin-bottom: 6px;">📊</div>
+              <div style="font-weight: 600; margin-bottom: 4px;">Live Player Box Score Pending from ESPN</div>
+              <div style="font-size: 0.85rem; color: #888;">ESPN is providing live score and clock updates for this game, but individual player box score stats have not been posted yet. This page refreshes automatically every 30 seconds.</div>
+            </div>
+          </div>
+        `;
+      }
       return `
         <div id="team-stats-${index}" style="display: ${displayStyle};">
           <div class="stats-table-wrapper">

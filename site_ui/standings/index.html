@@ -222,10 +222,21 @@ permalink: /standings/
                     : `Power Rating: ${escapeHtml(teamBpi.bpi)}`)
                 : 'National Rank';
 
-            const sosRankLabel = (teamBpi && teamBpi.sosRank && teamBpi.sosRank !== '-') ? escapeHtml(teamBpi.sosRank) : '-';
-            const sosSubLabel = (teamBpi && (teamBpi.sorRank !== '-' || teamBpi.remSosRank !== '-'))
-                ? `SOR: ${escapeHtml(teamBpi.sorRank)} · Rem SOS: ${escapeHtml(teamBpi.remSosRank)}`
-                : `vs AP Top 25: ${escapeHtml(vsApRec)}`;
+            const schedSos = calculateScheduleSosSummary(schedData?.events || [], teamId, globalBpiMap);
+            const resolvedSos = (teamBpi && teamBpi.sosRank && teamBpi.sosRank !== '-')
+                ? teamBpi.sosRank
+                : (schedSos.sosRank !== '-' ? schedSos.sosRank : '-');
+            const resolvedRemSos = (teamBpi && teamBpi.remSosRank && teamBpi.remSosRank !== '-')
+                ? teamBpi.remSosRank
+                : (schedSos.remSosRank !== '-' ? schedSos.remSosRank : '-');
+            const resolvedSor = (teamBpi && teamBpi.sorRank && teamBpi.sorRank !== '-')
+                ? teamBpi.sorRank
+                : '-';
+
+            const sosRankLabel = escapeHtml(resolvedSos);
+            const sosSubLabel = (resolvedSor !== '-' || resolvedRemSos !== '-')
+                ? `SOR: ${escapeHtml(resolvedSor)} · Rem SOS: ${escapeHtml(resolvedRemSos)}`
+                : (schedSos.avgOppRank ? `Avg Opp Rank: #${escapeHtml(schedSos.avgOppRank)}` : `vs AP Top 25: ${escapeHtml(vsApRec)}`);
 
             const fgPct = seasonStats?.fgPct || '-';
             const threePtPct = seasonStats?.threePtPct || '-';

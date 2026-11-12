@@ -79,8 +79,32 @@ permalink: /groups/
         const { teamId: TEAM_ID, league: LEAGUE, sportPath: SPORT_PATH } = getAppContext();
         let USER_UID = null;
         let currentGroupData = null;
+        let loadedGroupsMap = {};
         let groupMemberStats = {};
         let groupGamesData = [];
+
+        function safeGetValTierClass(val) {
+            if (typeof getValTierClass === 'function') {
+                return getValTierClass(val);
+            }
+            const num = Number(val);
+            if (isNaN(num)) return 'val-pill-low';
+            if (num < 0) return 'val-pill-neg';
+            if (num >= 30) return 'val-pill-high';
+            if (num >= 15) return 'val-pill-mid';
+            return 'val-pill-low';
+        }
+
+        function withTimeout(promise, ms, fallbackValue = null) {
+            let timerId;
+            const timeoutPromise = new Promise((resolve) => {
+                timerId = setTimeout(() => resolve(fallbackValue), ms);
+            });
+            return Promise.race([
+                Promise.resolve(promise).catch(() => fallbackValue),
+                timeoutPromise
+            ]).finally(() => clearTimeout(timerId));
+        }
 
         if (typeof auth !== 'undefined' && auth) {
             auth.onAuthStateChanged(user => {
@@ -96,7 +120,12 @@ permalink: /groups/
         window.addEventListener('hashchange', handleRouting);
 
         function handleRouting() {
-            const groupId = window.location.hash.substring(1);
+            if (!USER_UID) return;
+            const rawHash = window.location.hash ? window.location.hash.substring(1) : '';
+            let groupId = rawHash.trim();
+            try {
+                groupId = decodeURIComponent(groupId);
+            } catch (e) {}
             if (groupId) {
                 loadGroupDetail(groupId);
             } else {
@@ -262,6 +291,7 @@ permalink: /groups/
                     snapshot.forEach(doc => {
                         const data = doc.data();
                         data.id = doc.id;
+                        loadedGroupsMap[doc.id] = data;
                         if (data.members && data.members.includes(USER_UID)) {
                             myGroups.push(data);
                         } else {
@@ -304,8 +334,8 @@ permalink: /groups/
                         </div>
                     </div>
                     ${isMember ? 
-                        `<button class="btn btn-secondary view-group-btn" data-group-id="${escapeHtml(group.id)}">View Group &rarr;</button>` : 
-                        `<button class="btn btn-primary join-group-btn" data-group-id="${escapeHtml(group.id)}" data-is-private="${isPrivate ? 'true' : 'false'}">Join</button>`
+                        `<button type="button" class="btn btn-secondary view-group-btn" data-group-id="${escapeHtml(group.id)}">View Group &rarr;</button>` : 
+                        `<button type="button" class="btn btn-primary join-group-btn" data-group-id="${escapeHtml(group.id)}" data-is-private="${isPrivate ? 'true' : 'false'}">Join</button>`
                     }
                 </div>
             `}).join('');
@@ -325,12 +355,19 @@ permalink: /groups/
         });
 
         function navigateToGroup(id) {
-            window.location.hash = id;
+            if (!id) return;
+            const currentHash = decodeURIComponent(window.location.hash.replace(/^#/, '').trim());
+            if (currentHash === id) {
+                loadGroupDetail(id);
+            } else {
+                window.location.hash = id;
+            }
         }
 
         async function loadGroupDetail(groupId) {
             document.getElementById('groups-main-view').style.display = 'none';
             document.getElementById('single-group-view').style.display = 'block';
+            switchGroupTab('leaderboard');
             
             const headerContainer = document.getElementById('single-group-header');
             const highlightsContainer = document.getElementById('single-group-highlights');
@@ -339,26 +376,39 @@ permalink: /groups/
 
             headerContainer.innerHTML = '<div class="loading">Loading group details...</div>';
             highlightsContainer.innerHTML = '';
-            lbContainer.innerHTML = '';
+            lbContainer.innerHTML = '<div class="loading">Loading leaderboard...</div>';
             matrixContainer.innerHTML = '';
 
             try {
-                const doc = await db.collection('groups').doc(groupId).get();
-                if (!doc.exists) {
+                let groupData = null;
+                if (typeof db !== 'undefined' && db) {
+                    const doc = await withTimeout(db.collection('groups').doc(groupId).get(), 6000, null);
+                    if (doc && doc.exists) {
+                        groupData = doc.data();
+                        groupData.id = doc.id;
+                        loadedGroupsMap[doc.id] = groupData;
+                    }
+                }
+                if (!groupData && loadedGroupsMap[groupId]) {
+                    groupData = loadedGroupsMap[groupId];
+                }
+
+                if (!groupData) {
                     headerContainer.innerHTML = '<div class="error">Group not found.</div>';
+                    lbContainer.innerHTML = '';
                     return;
                 }
                 
-                currentGroupData = doc.data();
-                currentGroupData.id = doc.id;
+                currentGroupData = groupData;
 
                 if (!currentGroupData.members || !currentGroupData.members.includes(USER_UID)) {
                     headerContainer.innerHTML = `
                         <div class="error" style="padding: 20px; text-align: center;">
                             <h3>You are not a member of this group.</h3>
-                            <button class="btn btn-primary" id="detail-join-group-btn">Join Group</button>
+                            <button type="button" class="btn btn-primary" id="detail-join-group-btn">Join Group</button>
                         </div>
                     `;
+                    lbContainer.innerHTML = '';
                     const detailJoinBtn = document.getElementById('detail-join-group-btn');
                     if (detailJoinBtn) {
                         detailJoinBtn.onclick = () => joinGroup(groupId, Boolean(currentGroupData.isPrivate));
@@ -366,7 +416,13 @@ permalink: /groups/
                     return;
                 }
 
-                // Check ownership and auto-backfill ownerId for existing groups if missing
+                // Render Header
+                renderGroupHeader(currentGroupData);
+
+                // Calculate group stats and render leaderboard
+                await renderRichGroupData(currentGroupData);
+
+                // Check ownership and auto-backfill ownerId for existing groups if missing (after rendering data)
                 const isOwner = isGroupOwner(currentGroupData, USER_UID);
                 if (isOwner && !currentGroupData.ownerId && typeof db !== 'undefined' && db) {
                     db.collection('groups').doc(groupId).update({ ownerId: USER_UID })
@@ -378,15 +434,10 @@ permalink: /groups/
                         });
                 }
 
-                // Render Header
-                renderGroupHeader(currentGroupData);
-
-                // Calculate group stats and render leaderboard
-                await renderRichGroupData(currentGroupData);
-
             } catch (e) {
                 console.error("Error loading group detail:", e);
                 headerContainer.innerHTML = '<div class="error">Error loading group data.</div>';
+                lbContainer.innerHTML = '';
             }
         }
 
@@ -429,11 +480,13 @@ permalink: /groups/
 
         async function fetchUserProfiles(uids) {
             const profiles = {};
-            const fetchPromises = uids.map(uid => 
-                db.collection('user_settings').doc(uid).get()
+            if (!Array.isArray(uids) || typeof db === 'undefined' || !db) return profiles;
+            const validUids = uids.filter(uid => typeof uid === 'string' && uid.trim().length > 0);
+            const fetchPromises = validUids.map(uid => 
+                withTimeout(db.collection('user_settings').doc(uid).get(), 4000, null)
                     .then(doc => {
-                        if (doc.exists) {
-                            profiles[uid] = doc.data();
+                        if (doc && doc.exists) {
+                            profiles[uid] = doc.data() || {};
                         } else {
                             profiles[uid] = {};
                         }
@@ -454,18 +507,24 @@ permalink: /groups/
             lbContainer.innerHTML = '<div class="loading">Calculating stats and compiling leaderboard...</div>';
 
             try {
-                const members = groupData.members || [];
+                const rawMembers = Array.isArray(groupData.members) ? groupData.members : [];
+                const members = rawMembers.filter(uid => typeof uid === 'string' && uid.trim().length > 0);
                 const teamId = groupData.teamId || TEAM_ID;
                 const league = groupData.league || LEAGUE;
                 const sportPath = getSportPath(league);
                 const collectionName = getCollectionName(teamId, league);
 
-                // 1. Fetch user profiles in parallel
-                const userProfiles = await fetchUserProfiles(members);
+                // 1. Fetch user profiles and team schedule in parallel
+                const [userProfiles, scheduleData] = await Promise.all([
+                    fetchUserProfiles(members),
+                    withTimeout(fetchTeamSchedule(sportPath, teamId), 8000, { events: [] })
+                ]);
 
-                // 2. Fetch completed schedule
-                const scheduleData = await fetchTeamSchedule(sportPath, teamId);
-                const completedEvents = (scheduleData.events || []).filter(e => e.competitions?.[0]?.status?.type?.state === 'post');
+                const completedEvents = ((scheduleData && scheduleData.events) || []).filter(e => {
+                    const compStatus = e?.competitions?.[0]?.status?.type;
+                    const eventStatus = e?.status?.type;
+                    return compStatus?.state === 'post' || eventStatus?.state === 'post' || compStatus?.completed === true || eventStatus?.completed === true;
+                });
 
                 // Initialize member stats store
                 groupMemberStats = {};
@@ -473,7 +532,7 @@ permalink: /groups/
                     const localUserName = (uid === USER_UID) ? (localStorage.getItem('displayName') || (typeof auth !== 'undefined' && auth?.currentUser?.displayName)) : null;
                     groupMemberStats[uid] = {
                         uid: uid,
-                        displayName: userProfiles[uid]?.displayName || localUserName || `Member ${uid.substring(0, 5)}`,
+                        displayName: userProfiles[uid]?.displayName || localUserName || `Member ${String(uid).substring(0, 5)}`,
                         favoriteTeamId: userProfiles[uid]?.favoriteTeamId || teamId,
                         totalPoints: 0,
                         picksCount: 0,
@@ -483,91 +542,108 @@ permalink: /groups/
                     };
                 });
 
-                // 3. Process each completed game
+                // 3. Process each completed game resiliently
                 groupGamesData = [];
 
                 const gamePromises = completedEvents.map(async (event) => {
-                    const gameId = String(event.id);
-                    const comp = event.competitions[0];
-                    const oppTeam = comp.competitors.find(c => String(c.team.id) !== String(teamId))?.team;
-                    const gameDate = new Date(event.date);
+                    try {
+                        if (!event || !event.id) return;
+                        const gameId = String(event.id);
+                        const comp = event.competitions?.[0];
+                        if (!comp) return;
+                        const oppTeam = (comp.competitors || []).find(c => String(c?.team?.id) !== String(teamId))?.team;
+                        const parsedDate = new Date(event.date || comp.date);
+                        const gameDate = isNaN(parsedDate.getTime()) ? new Date(0) : parsedDate;
 
-                    const [summaryResp, pickDoc] = await Promise.all([
-                        fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${sportPath}/summary?event=${gameId}`).then(r => r.json()).catch(() => null),
-                        db.collection(collectionName).doc(gameId).get().catch(() => null)
-                    ]);
+                        const [summaryResp, pickDoc] = await Promise.all([
+                            withTimeout(
+                                fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${sportPath}/summary?event=${encodeURIComponent(gameId)}`)
+                                    .then(r => r.ok ? r.json() : null)
+                                    .catch(() => null),
+                                6000,
+                                null
+                            ),
+                            (typeof db !== 'undefined' && db)
+                                ? withTimeout(db.collection(collectionName).doc(gameId).get(), 5000, null)
+                                : Promise.resolve(null)
+                        ]);
 
-                    if (!summaryResp || !summaryResp.boxscore || !summaryResp.boxscore.players) return;
+                        if (!summaryResp || !summaryResp.boxscore || !Array.isArray(summaryResp.boxscore.players)) return;
 
-                    const teamStats = summaryResp.boxscore.players.find(p => String(p.team.id) === String(teamId));
-                    if (!teamStats || !teamStats.statistics || !teamStats.statistics[0]) return;
+                        const teamStats = summaryResp.boxscore.players.find(p => String(p?.team?.id) === String(teamId));
+                        const statGroup = teamStats?.statistics?.[0];
+                        if (!statGroup) return;
 
-                    const athletes = teamStats.statistics[0].athletes;
-                    const labels = teamStats.statistics[0].names;
+                        const athletes = Array.isArray(statGroup.athletes) ? statGroup.athletes : [];
+                        const labels = Array.isArray(statGroup.names) ? statGroup.names : [];
+                        if (athletes.length === 0 || labels.length === 0) return;
 
-                    // Calculate VAL for all players in this game
-                    const playerValMap = {};
-                    let topPlayerId = null;
-                    let topPlayerName = '';
-                    let topVal = -Infinity;
+                        // Calculate VAL for all active players in this game
+                        const playerValMap = {};
+                        let topPlayerId = null;
+                        let topPlayerName = '';
+                        let topVal = -Infinity;
 
-                    athletes.forEach(p => {
-                        if (p.athlete && p.stats) {
-                            const val = calculateVal(p.stats, labels);
-                            const name = p.athlete.shortName || p.athlete.displayName;
-                            playerValMap[p.athlete.id] = { val: val, name: name };
-                            if (val > topVal) {
-                                topVal = val;
-                                topPlayerId = String(p.athlete.id);
-                                topPlayerName = name;
+                        athletes.forEach(p => {
+                            if (p && p.athlete && Array.isArray(p.stats) && p.stats.length > 0 && !p.didNotPlay) {
+                                const val = calculateVal(p.stats, labels);
+                                const name = p.athlete.shortName || p.athlete.displayName || 'Player';
+                                playerValMap[String(p.athlete.id)] = { val: val, name: name };
+                                if (val > topVal) {
+                                    topVal = val;
+                                    topPlayerId = String(p.athlete.id);
+                                    topPlayerName = name;
+                                }
                             }
-                        }
-                    });
+                        });
 
-                    const picks = (pickDoc && pickDoc.exists) ? pickDoc.data() : {};
+                        const picks = (pickDoc && pickDoc.exists) ? (pickDoc.data() || {}) : {};
 
-                    // Assign stats to members
-                    members.forEach(uid => {
-                        const pickedPlayerId = picks[uid];
-                        if (pickedPlayerId && playerValMap[pickedPlayerId]) {
-                            const pData = playerValMap[pickedPlayerId];
-                            const isTop = String(pickedPlayerId) === String(topPlayerId);
-                            
-                            groupMemberStats[uid].totalPoints += pData.val;
-                            groupMemberStats[uid].picksCount += 1;
-                            if (isTop) groupMemberStats[uid].topPicksCount += 1;
+                        // Assign stats to members
+                        members.forEach(uid => {
+                            const pickedPlayerId = picks[uid] ? String(picks[uid]) : null;
+                            if (pickedPlayerId && playerValMap[pickedPlayerId] && groupMemberStats[uid]) {
+                                const pData = playerValMap[pickedPlayerId];
+                                const isTop = String(pickedPlayerId) === String(topPlayerId);
+                                
+                                groupMemberStats[uid].totalPoints += pData.val;
+                                groupMemberStats[uid].picksCount += 1;
+                                if (isTop) groupMemberStats[uid].topPicksCount += 1;
 
-                            const pickInfo = {
-                                gameId: gameId,
-                                date: gameDate,
-                                opponent: oppTeam?.shortDisplayName || oppTeam?.displayName || 'Opponent',
-                                opponentLogo: oppTeam?.logos?.[0]?.href || '',
-                                playerId: pickedPlayerId,
-                                playerName: pData.name,
-                                val: pData.val,
-                                isTopPlayer: isTop,
-                                topPlayerName: topPlayerName,
-                                topPlayerVal: topVal
-                            };
+                                const pickInfo = {
+                                    gameId: gameId,
+                                    date: gameDate,
+                                    opponent: oppTeam?.shortDisplayName || oppTeam?.displayName || 'Opponent',
+                                    opponentLogo: oppTeam?.logos?.[0]?.href || '',
+                                    playerId: pickedPlayerId,
+                                    playerName: pData.name,
+                                    val: pData.val,
+                                    isTopPlayer: isTop,
+                                    topPlayerName: topPlayerName,
+                                    topPlayerVal: topVal === -Infinity ? 0 : topVal
+                                };
 
-                            groupMemberStats[uid].picks[gameId] = pickInfo;
+                                groupMemberStats[uid].picks[gameId] = pickInfo;
 
-                            if (!groupMemberStats[uid].bestPick || pData.val > groupMemberStats[uid].bestPick.val) {
-                                groupMemberStats[uid].bestPick = pickInfo;
+                                if (!groupMemberStats[uid].bestPick || pData.val > groupMemberStats[uid].bestPick.val) {
+                                    groupMemberStats[uid].bestPick = pickInfo;
+                                }
                             }
-                        }
-                    });
+                        });
 
-                    groupGamesData.push({
-                        id: gameId,
-                        date: gameDate,
-                        opponent: oppTeam?.shortDisplayName || oppTeam?.displayName || 'Opponent',
-                        opponentLogo: oppTeam?.logos?.[0]?.href || '',
-                        topPlayerName: topPlayerName,
-                        topPlayerVal: topVal,
-                        picks: picks,
-                        playerValMap: playerValMap
-                    });
+                        groupGamesData.push({
+                            id: gameId,
+                            date: gameDate,
+                            opponent: oppTeam?.shortDisplayName || oppTeam?.displayName || 'Opponent',
+                            opponentLogo: oppTeam?.logos?.[0]?.href || '',
+                            topPlayerName: topPlayerName || '-',
+                            topPlayerVal: topVal === -Infinity ? 0 : topVal,
+                            picks: picks,
+                            playerValMap: playerValMap
+                        });
+                    } catch (gameErr) {
+                        console.warn('Skipping game in group leaderboard due to error:', gameErr);
+                    }
                 });
 
                 await Promise.all(gamePromises);
@@ -579,7 +655,7 @@ permalink: /groups/
                 const sortedMemberList = Object.values(groupMemberStats).sort((a, b) => b.totalPoints - a.totalPoints);
 
                 // 4. Render Highlights
-                if (sortedMemberList.length > 0 && completedEvents.length > 0) {
+                if (sortedMemberList.length > 0) {
                     const leader = sortedMemberList[0];
                     
                     const accuracyRanked = [...sortedMemberList]
@@ -610,7 +686,7 @@ permalink: /groups/
                             </div>
                             <div class="group-stat-card">
                                 <div class="group-stat-title">⚡ Best Single Pick</div>
-                                <div class="group-stat-value">${bestOverallPick ? `+${bestOverallPick.val}` : '-'}</div>
+                                <div class="group-stat-value">${bestOverallPick ? `${bestOverallPick.val >= 0 ? '+' : ''}${bestOverallPick.val}` : '-'}</div>
                                 <div class="group-stat-sub">${bestOverallPick ? `${escapeHtml(bestPicker.displayName)} (${escapeHtml(bestOverallPick.playerName)})` : 'No picks yet'}</div>
                             </div>
                         </div>
@@ -660,10 +736,9 @@ permalink: /groups/
                         recentGames.forEach(g => {
                             const pick = member.picks[g.id];
                             if (pick) {
-                                const cls = pick.isTopPlayer ? 'trend-top' : 'trend-normal';
                                 const star = pick.isTopPlayer ? '★' : '';
                                 const safePlayer = escapeHtml(pick.playerName);
-                                trendHtml += `<span class="trend-pill ${getValTierClass(pick.val)}" title="${safePlayer}: ${pick.val >= 0 ? '+' : ''}${pick.val} VAL">${star}${pick.val >= 0 ? '+' : ''}${pick.val}</span>`;
+                                trendHtml += `<span class="trend-pill ${safeGetValTierClass(pick.val)}" title="${safePlayer}: ${pick.val >= 0 ? '+' : ''}${pick.val} VAL">${star}${pick.val >= 0 ? '+' : ''}${pick.val}</span>`;
                             } else {
                                 trendHtml += `<span class="trend-pill trend-none" title="No Pick">-</span>`;
                             }
@@ -687,7 +762,7 @@ permalink: /groups/
                             <td style="text-align: center;">${avgVal}</td>
                             <td style="text-align: center;">${trendHtml}</td>
                             <td style="text-align: center;">
-                                <button class="btn btn-secondary view-member-btn" style="padding: 4px 10px; font-size: 0.8rem;" data-member-uid="${escapeHtml(member.uid)}">View</button>
+                                <button type="button" class="btn btn-secondary view-member-btn" style="padding: 4px 10px; font-size: 0.8rem;" data-member-uid="${escapeHtml(member.uid)}">View</button>
                             </td>
                         </tr>
                     `;
@@ -721,7 +796,9 @@ permalink: /groups/
                     matrixHtml += `<tr><td colspan="${sortedMemberList.length + 2}" style="text-align:center; padding: 20px; color:#888;">No completed games yet.</td></tr>`;
                 } else {
                     groupGamesData.forEach(game => {
-                        const dateStr = game.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                        const dateStr = game.date && !isNaN(game.date.getTime()) && game.date.getTime() > 0
+                            ? game.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                            : '-';
                         const safeOppLogo = game.opponentLogo ? sanitizeUrl(game.opponentLogo) : '';
                         const oppLogo = safeOppLogo ? `<img src="${safeOppLogo}" width="18" height="18" style="vertical-align: middle; margin-right: 5px;">` : '';
 
@@ -732,7 +809,7 @@ permalink: /groups/
                                 const crown = pick.isTopPlayer ? ' 👑' : '';
                                 return `<td style="text-align: center; padding: 6px; ${cls}">
                                     <div style="font-weight: 500; font-size: 0.85rem;">${escapeHtml(pick.playerName)}</div>
-                                    <div><span class="roster-val-badge ${getValTierClass(pick.val)}">${pick.val >= 0 ? '+' : ''}${pick.val}${crown}</span></div>
+                                    <div><span class="roster-val-badge ${safeGetValTierClass(pick.val)}">${pick.val >= 0 ? '+' : ''}${pick.val}${crown}</span></div>
                                 </td>`;
                             } else {
                                 return `<td style="text-align: center; color: #bbb; font-size: 0.85rem;">-</td>`;
@@ -776,12 +853,15 @@ permalink: /groups/
                 tableRows = `<tr><td colspan="5" style="text-align:center; padding: 20px; color:#888;">No picks made in this group yet.</td></tr>`;
             } else {
                 tableRows = sortedPicks.map(p => {
-                    const dateStr = p.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    const dateStr = p.date && !isNaN(p.date.getTime()) && p.date.getTime() > 0
+                        ? p.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                        : '-';
                     const safeOppLogo = p.opponentLogo ? sanitizeUrl(p.opponentLogo) : '';
                     const oppLogo = safeOppLogo ? `<img src="${safeOppLogo}" width="16" height="16" style="vertical-align: middle; margin-right: 4px;">` : '';
+                    const sign = p.val >= 0 ? '+' : '';
                     const valBadge = p.isTopPlayer 
-                        ? `<span style="background: #d4edda; color: #155724; padding: 2px 6px; border-radius: 4px; font-weight: bold;">+${p.val} 👑</span>`
-                        : `<span style="font-weight: bold;">+${p.val}</span>`;
+                        ? `<span style="background: #d4edda; color: #155724; padding: 2px 6px; border-radius: 4px; font-weight: bold;">${sign}${p.val} 👑</span>`
+                        : `<span style="font-weight: bold;">${sign}${p.val}</span>`;
 
                     return `
                         <tr>

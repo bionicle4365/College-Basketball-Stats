@@ -535,59 +535,85 @@ const _bpiMapMemoryCache = {};
 const _teamStatsMemoryCache = {};
 const BPI_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
+function formatRankToken(val, fallback = '-') {
+    if (val === null || val === undefined || val === '' || val === '-') return fallback;
+    const str = String(val).trim();
+    if (!str || str === '-') return fallback;
+    if (str.startsWith('#')) return str;
+    const num = parseInt(str.replace(/^Tied-/i, ''), 10);
+    if (!isNaN(num) && num > 0) return `#${num}`;
+    return str;
+}
+
 async function fetchBpiAndResumeMap(sportPath) {
     const sPath = sportPath || getSportPath();
     if (_bpiMapMemoryCache[sPath]) {
         return _bpiMapMemoryCache[sPath];
     }
 
-    const storageKey = `espn_bpi_map_v1_${sPath}`;
+    const storageKey = `espn_bpi_map_v3_${sPath}`;
     try {
         const raw = sessionStorage.getItem(storageKey);
         if (raw) {
             const parsed = JSON.parse(raw);
             if (parsed && parsed.ts && (Date.now() - parsed.ts < BPI_CACHE_TTL_MS) && parsed.map && Object.keys(parsed.map).length > 0) {
-                _bpiMapMemoryCache[sPath] = parsed.map;
-                return parsed.map;
+                const sample = Object.values(parsed.map)[0];
+                // For Men's, only reuse sessionStorage if it came from the full BPI endpoint
+                if (sPath !== 'mens-college-basketball' || sample?.source === 'BPI') {
+                    _bpiMapMemoryCache[sPath] = parsed.map;
+                    return parsed.map;
+                }
             }
         }
     } catch (e) {}
 
     const map = {};
 
-    // Primary: ESPN FITT Power Index (BPI) endpoint
-    try {
-        const bpiUrl = `https://site.web.api.espn.com/apis/fitt/v3/sports/basketball/${encodeURIComponent(sPath)}/powerindex?region=us&lang=en&limit=400`;
-        const response = await fetch(bpiUrl);
-        if (response.ok) {
-            const data = await response.json();
-            const teams = data?.teams || [];
-            teams.forEach(item => {
-                const tId = item?.team?.id ? String(item.team.id) : null;
-                if (!tId) return;
-                const bpiCat = (item.categories || []).find(c => c.name === 'bpi');
-                const resumeCat = (item.categories || []).find(c => c.name === 'resume');
-                const rankNum = Number(item.team.rankValue) || Number(bpiCat?.values?.[1]) || null;
-                if (rankNum && rankNum > 0) {
-                    map[tId] = {
-                        rank: rankNum,
-                        rankDisplay: bpiCat?.totals?.[1] || `#${rankNum}`,
-                        bpi: bpiCat?.totals?.[0] ?? '-',
-                        offRank: bpiCat?.ranks?.[3] || '-',
-                        defRank: bpiCat?.ranks?.[4] || '-',
-                        remSosRank: bpiCat?.totals?.[6] || bpiCat?.ranks?.[6] || '-',
-                        sorRank: resumeCat?.totals?.[0] || resumeCat?.ranks?.[0] || '-',
-                        sosRank: resumeCat?.totals?.[5] || resumeCat?.ranks?.[5] || '-',
-                        nonConfSosRank: resumeCat?.totals?.[6] || resumeCat?.ranks?.[6] || '-',
-                        projW: bpiCat?.totals?.[9] || null,
-                        projL: bpiCat?.totals?.[10] || null,
-                        source: 'BPI'
-                    };
-                }
-            });
+    // Primary: ESPN FITT Power Index (BPI) endpoint (try both site.api.espn.com and site.web.api.espn.com)
+    const bpiUrls = [
+        `https://site.api.espn.com/apis/fitt/v3/sports/basketball/${encodeURIComponent(sPath)}/powerindex?region=us&lang=en&limit=400`,
+        `https://site.web.api.espn.com/apis/fitt/v3/sports/basketball/${encodeURIComponent(sPath)}/powerindex?region=us&lang=en&limit=400`
+    ];
+
+    for (const bpiUrl of bpiUrls) {
+        if (Object.keys(map).length > 0) break;
+        try {
+            const response = await fetch(bpiUrl);
+            if (response.ok) {
+                const data = await response.json();
+                const teams = data?.teams || [];
+                teams.forEach(item => {
+                    const tId = item?.team?.id ? String(item.team.id) : null;
+                    if (!tId) return;
+                    const bpiCat = (item.categories || []).find(c => c.name === 'bpi');
+                    const resumeCat = (item.categories || []).find(c => c.name === 'resume');
+                    const rankNum = Number(item.team.rankValue) || Number(bpiCat?.values?.[1]) || null;
+                    if (rankNum && rankNum > 0) {
+                        const rawSos = resumeCat?.values?.[5] ?? resumeCat?.totals?.[5] ?? resumeCat?.ranks?.[5] ?? '-';
+                        const rawSor = resumeCat?.values?.[0] ?? resumeCat?.totals?.[0] ?? resumeCat?.ranks?.[0] ?? '-';
+                        const rawRemSos = bpiCat?.values?.[6] ?? bpiCat?.totals?.[6] ?? bpiCat?.ranks?.[6] ?? '-';
+                        const rawNonConfSos = resumeCat?.values?.[6] ?? resumeCat?.totals?.[6] ?? resumeCat?.ranks?.[6] ?? '-';
+
+                        map[tId] = {
+                            rank: rankNum,
+                            rankDisplay: `#${rankNum}`,
+                            bpi: bpiCat?.totals?.[0] ?? '-',
+                            offRank: formatRankToken(bpiCat?.ranks?.[3]),
+                            defRank: formatRankToken(bpiCat?.ranks?.[4]),
+                            remSosRank: formatRankToken(rawRemSos),
+                            sorRank: formatRankToken(rawSor),
+                            sosRank: formatRankToken(rawSos),
+                            nonConfSosRank: formatRankToken(rawNonConfSos),
+                            projW: bpiCat?.totals?.[9] || null,
+                            projL: bpiCat?.totals?.[10] || null,
+                            source: 'BPI'
+                        };
+                    }
+                });
+            }
+        } catch (err) {
+            console.warn('BPI endpoint attempt failed:', bpiUrl, err);
         }
-    } catch (err) {
-        console.warn('BPI endpoint unavailable, falling back to standings power rank:', err);
     }
 
     // Fallback (e.g. Women's College Basketball when ESPN powerindex returns 400):
@@ -608,17 +634,28 @@ async function fetchBpiAndResumeMap(sportPath) {
                             return s && s.value !== undefined ? Number(s.value) : 0;
                         };
                         const winPct = getStatVal('winpercent');
+                        const wins = getStatVal('wins');
+                        const losses = getStatVal('losses');
+                        const vsApWins = getStatVal('vsaprankedteams_wins');
                         const ppg = getStatVal('avgpointsfor');
                         const oppPpg = getStatVal('avgpointsagainst');
                         const margin = ppg - oppPpg;
                         const apRank = Number(entry.team.rank) || 999;
                         const ratingScore = (apRank <= 25 ? (30 - apRank) * 2.5 : 0) + (winPct * 25) + (margin * 0.6);
+                        const sorScore = (wins * 12) - (losses * 8) + (winPct * 35) + (vsApWins * 15) + (margin * 0.35);
                         allEntries.push({
                             id: String(entry.team.id),
                             ratingScore,
+                            sorScore,
                             margin
                         });
                     });
+                });
+
+                const bySor = [...allEntries].sort((a, b) => b.sorScore - a.sorScore);
+                const sorRankById = {};
+                bySor.forEach((item, idx) => {
+                    sorRankById[item.id] = `#${idx + 1}`;
                 });
 
                 allEntries.sort((a, b) => b.ratingScore - a.ratingScore);
@@ -631,7 +668,7 @@ async function fetchBpiAndResumeMap(sportPath) {
                         offRank: '-',
                         defRank: '-',
                         remSosRank: '-',
-                        sorRank: '-',
+                        sorRank: sorRankById[item.id] || `#${r}`,
                         sosRank: '-',
                         nonConfSosRank: '-',
                         projW: null,
@@ -647,12 +684,69 @@ async function fetchBpiAndResumeMap(sportPath) {
 
     if (Object.keys(map).length > 0) {
         _bpiMapMemoryCache[sPath] = map;
-        try {
-            sessionStorage.setItem(storageKey, JSON.stringify({ ts: Date.now(), map }));
-        } catch (e) {}
+        const sample = Object.values(map)[0];
+        if (sPath !== 'mens-college-basketball' || sample?.source === 'BPI') {
+            try {
+                sessionStorage.setItem(storageKey, JSON.stringify({ ts: Date.now(), map }));
+            } catch (e) {}
+        }
     }
 
     return map;
+}
+
+function calculateScheduleSosSummary(events, teamId, bpiMap) {
+    if (!Array.isArray(events) || !bpiMap) {
+        return { sosRank: '-', remSosRank: '-', avgOppRank: null };
+    }
+
+    const totalTeams = Object.keys(bpiMap).length || 363;
+    const playedEffRanks = [];
+    const remEffRanks = [];
+    const allRawRanks = [];
+
+    events.forEach(event => {
+        const game = event?.competitions?.[0];
+        if (!game) return;
+        const myTeam = (game.competitors || []).find(c => String(c.team?.id) === String(teamId));
+        const opponent = (game.competitors || []).find(c => String(c.team?.id) !== String(teamId));
+        if (!myTeam || !opponent?.team?.id) return;
+
+        const oppBpi = bpiMap[String(opponent.team.id)];
+        if (!oppBpi || !oppBpi.rank) return;
+
+        const isNeutral = Boolean(game.neutralSite);
+        const isHome = !isNeutral && myTeam.homeAway === 'home';
+        const locWeight = isNeutral ? 1.0 : (isHome ? 1.12 : 0.88);
+        const effRank = oppBpi.rank * locWeight;
+
+        allRawRanks.push(oppBpi.rank);
+        if (game.status?.type?.state === 'post' || game.status?.type?.completed) {
+            playedEffRanks.push(effRank);
+        } else {
+            remEffRanks.push(effRank);
+        }
+    });
+
+    const toNationalSosRank = (effRanks) => {
+        if (!effRanks || effRanks.length === 0) return '-';
+        const avgEff = effRanks.reduce((a, b) => a + b, 0) / effRanks.length;
+        // Map average opponent rank (~55 toughest to ~285 easiest across D1 schedules) onto 1..totalTeams
+        const normalized = (avgEff - 55) / (285 - 55);
+        const estRank = Math.max(1, Math.min(totalTeams, Math.round(normalized * (totalTeams - 1) + 1)));
+        return `#${estRank}`;
+    };
+
+    const primaryRanks = playedEffRanks.length > 0 ? playedEffRanks : remEffRanks;
+    const avgOppRank = allRawRanks.length > 0
+        ? Math.round(allRawRanks.reduce((a, b) => a + b, 0) / allRawRanks.length)
+        : null;
+
+    return {
+        sosRank: toNationalSosRank(primaryRanks),
+        remSosRank: toNationalSosRank(remEffRanks),
+        avgOppRank
+    };
 }
 
 function getGameQuadrant(oppRank, isHome, isNeutral) {

@@ -1533,14 +1533,14 @@ body.dark-mode .schedule-card-chip.correct-pick {
         grid-template-columns: 1fr;
         gap: 8px;
     }
-    .leaderboard-table th:nth-child(4),
-    .leaderboard-table td:nth-child(4),
-    .leaderboard-table th:nth-child(5),
-    .leaderboard-table td:nth-child(5),
-    .leaderboard-table th:nth-child(6),
-    .leaderboard-table td:nth-child(6),
-    .leaderboard-table th:nth-child(8),
-    .leaderboard-table td:nth-child(8) {
+    #single-group-leaderboard .leaderboard-table th:nth-child(4),
+    #single-group-leaderboard .leaderboard-table td:nth-child(4),
+    #single-group-leaderboard .leaderboard-table th:nth-child(5),
+    #single-group-leaderboard .leaderboard-table td:nth-child(5),
+    #single-group-leaderboard .leaderboard-table th:nth-child(6),
+    #single-group-leaderboard .leaderboard-table td:nth-child(6),
+    #single-group-leaderboard .leaderboard-table th:nth-child(8),
+    #single-group-leaderboard .leaderboard-table td:nth-child(8) {
         display: none;
     }
     .trend-container .trend-pill:nth-child(n+3) {
@@ -3633,10 +3633,47 @@ body.dark-mode .standings-ap-rank {
     color: #9ca3af;
 }
 
+.standings-table {
+    table-layout: fixed;
+    width: 100%;
+}
+.standings-table th:nth-child(1),
+.standings-table td:nth-child(1):not(.stats-drawer-cell) {
+    width: 64px;
+}
+.standings-table th:nth-child(3),
+.standings-table td:nth-child(3) {
+    width: 95px;
+}
+.standings-table th:nth-child(4),
+.standings-table td:nth-child(4) {
+    width: 95px;
+}
+.standings-table td.stats-drawer-cell {
+    text-align: left !important;
+    width: auto !important;
+}
+
+.standings-drawer-inner {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.standings-drawer-inner .roster-summary-strip {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.standings-drawer-inner .roster-stat-pill {
+    min-width: 0;
+}
+
 .standings-quad-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 10px;
+    width: 100%;
 }
 
 .standings-quad-card {
@@ -3646,7 +3683,8 @@ body.dark-mode .standings-ap-rank {
     padding: 10px 12px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 3px;
+    min-width: 0;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
 }
 body.dark-mode .standings-quad-card {
@@ -3675,7 +3713,7 @@ body.dark-mode .standings-quad-pct {
 }
 
 .standings-quad-record {
-    font-size: 1.3rem;
+    font-size: 1.25rem;
     font-weight: 800;
     color: #111827;
     font-variant-numeric: tabular-nums;
@@ -3687,12 +3725,13 @@ body.dark-mode .standings-quad-record {
 
 .standings-quad-meta {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.72rem;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    font-size: 0.74rem;
     color: #6b7280;
     margin-top: 2px;
+    min-width: 0;
 }
 body.dark-mode .standings-quad-meta {
     color: #9ca3af;
@@ -3704,6 +3743,7 @@ body.dark-mode .standings-quad-meta {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    max-width: 100%;
 }
 body.dark-mode .standings-quad-cutoff {
     color: #71717a;
@@ -3711,16 +3751,20 @@ body.dark-mode .standings-quad-cutoff {
 
 .standings-team-stats-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 10px;
+    width: 100%;
 }
 
 @media (max-width: 700px) {
+    .standings-drawer-inner .roster-summary-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
     .standings-quad-grid {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
     .standings-team-stats-grid {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
 

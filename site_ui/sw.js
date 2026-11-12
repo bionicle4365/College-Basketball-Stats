@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cbb-stats-v5';
+const CACHE_NAME = 'cbb-stats-v8';
 const BASE_URL = '/College-Basketball-Stats';
 const ASSETS = [
   BASE_URL + '/',
@@ -34,23 +34,51 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Network-first strategy for local scripts/styles so updates take effect immediately
-  if (event.request.url.includes('/helpers.js') || event.request.url.includes('/styles.css') || event.request.url.includes('/common')) {
+  // Only handle GET requests
+  if (event.request.method !== 'GET') {
+    return;
+  }
+
+  let url;
+  try {
+    url = new URL(event.request.url);
+  } catch (e) {
+    return;
+  }
+
+  // Never intercept cross-origin API/Firestore/Auth requests (critical for iOS Safari WebKit streaming & CORS)
+  if (url.origin !== self.location.origin && !url.hostname.endsWith('gstatic.com')) {
+    return;
+  }
+
+  // Network-first strategy for HTML navigation requests so page updates and hashes work reliably on iOS Safari
+  if (event.request.mode === 'navigate' || event.request.destination === 'document') {
     event.respondWith(
       fetch(event.request)
+        .catch(() => caches.match(event.request, { ignoreSearch: true }))
+    );
+    return;
+  }
+
+  // Network-first strategy for local scripts/styles so updates take effect immediately
+  if (url.pathname.endsWith('/helpers.js') || url.pathname.endsWith('/styles.css') || url.pathname.includes('/common')) {
+    event.respondWith(
+      fetch(event.request, { cache: 'no-cache' })
         .then((response) => {
-          const resClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, resClone));
+          if (response && response.ok) {
+            const resClone = response.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, resClone));
+          }
           return response;
         })
-        .catch(() => caches.match(event.request))
+        .catch(() => caches.match(event.request, { ignoreSearch: true }))
     );
     return;
   }
 
   // Cache-first strategy for other static assets
   event.respondWith(
-    caches.match(event.request)
+    caches.match(event.request, { ignoreSearch: true })
       .then((response) => {
         return response || fetch(event.request);
       })

@@ -15,5 +15,8 @@ if (typeof firebase !== 'undefined') {
         firebase.initializeApp(firebaseConfig);
     }
     db = firebase.firestore();
+    try {
+        db.settings({ experimentalAutoDetectLongPolling: true, merge: true });
+    } catch (e) {}
     auth = firebase.auth();
 }
