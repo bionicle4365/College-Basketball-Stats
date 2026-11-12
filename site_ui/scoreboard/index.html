@@ -1185,7 +1185,7 @@ permalink: /scoreboard/
       return parts.length > 0 ? parts.join(' ') : (recs[0]?.summary || '');
   }
 
-  function renderLinescores(awayTeam, homeTeam) {
+  function renderLinescores(awayTeam, homeTeam, type, competition) {
       const awayScores = awayTeam.linescores || [];
       const homeScores = homeTeam.linescores || [];
       if (awayScores.length === 0 && homeScores.length === 0) return '';
@@ -1193,10 +1193,18 @@ permalink: /scoreboard/
       const maxPeriods = Math.max(awayScores.length, homeScores.length);
       if (maxPeriods === 0) return '';
 
+      const regPeriods = Number(competition?.format?.regulation?.periods) || (type === 'womens' ? 4 : 2);
+      const ordinals = ['1st', '2nd', '3rd', '4th'];
+
       let headerHtml = '<th>Team</th>';
       for (let i = 1; i <= maxPeriods; i++) {
-          let colName = i === 1 ? '1st' : i === 2 ? '2nd' : 'OT';
-          if (i > 3) colName = `OT${i - 2}`;
+          let colName;
+          if (i <= regPeriods) {
+              colName = ordinals[i - 1] || `${i}th`;
+          } else {
+              const otNum = i - regPeriods;
+              colName = otNum === 1 ? 'OT' : `OT${otNum}`;
+          }
           headerHtml += `<th>${colName}</th>`;
       }
       headerHtml += '<th class="col-total">T</th>';
@@ -1675,7 +1683,7 @@ permalink: /scoreboard/
     }
 
     // Linescores
-    const linescoreHtml = (summaryData && (awayTeam.linescores || homeTeam.linescores)) ? renderLinescores(awayTeam, homeTeam) : '';
+    const linescoreHtml = (summaryData && (awayTeam.linescores || homeTeam.linescores)) ? renderLinescores(awayTeam, homeTeam, type, competition) : '';
 
     // Win Probability Slider
     const winProbHtml = renderWinProbability(summaryData, awayTeam, homeTeam, state);

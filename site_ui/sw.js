@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cbb-stats-v8';
+const CACHE_NAME = 'cbb-stats-v9';
 const BASE_URL = '/College-Basketball-Stats';
 const ASSETS = [
   BASE_URL + '/',
