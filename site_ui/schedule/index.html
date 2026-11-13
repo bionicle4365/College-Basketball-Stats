@@ -16,12 +16,13 @@ permalink: /schedule/
         let allScheduleEvents = [];
 
         function loadScheduleData() {
-            // Fetch roster and schedule in parallel
+            // Fetch roster, schedule, and BPI quadrant map in parallel
             Promise.all([
                 fetchTeamRoster(SPORT_PATH, TEAM_ID).catch(() => null),
-                fetchTeamSchedule(SPORT_PATH, TEAM_ID)
+                fetchTeamSchedule(SPORT_PATH, TEAM_ID),
+                fetchBpiAndResumeMap(SPORT_PATH).catch(() => ({}))
             ])
-            .then(([rosterData, data]) => {
+            .then(([rosterData, data, bpiMap]) => {
                 const athletes = rosterData?.athletes || rosterData?.team?.athletes || [];
                 athletes.forEach(p => {
                     if (p && p.id) {
@@ -56,8 +57,16 @@ permalink: /schedule/
 
                     const opponent = game.competitors?.find(c => String(c.team.id) !== String(TEAM_ID));
                     
-                    const isHome = myTeam.homeAway === 'home';
-                    const vsAt = isHome ? 'vs' : '@';
+                    const isNeutral = Boolean(game.neutralSite);
+                    const isHome = !isNeutral && myTeam.homeAway === 'home';
+                    const vsAt = myTeam.homeAway === 'home' ? 'vs' : '@';
+
+                    const oppId = opponent?.team?.id ? String(opponent.team.id) : null;
+                    const oppBpi = (oppId && bpiMap) ? bpiMap[oppId] : null;
+                    const quadInfo = (oppBpi && oppBpi.rank) ? getGameQuadrant(oppBpi.rank, isHome, isNeutral) : null;
+                    const quadPillHtml = quadInfo
+                        ? ` <span class="quad-pill ${quadInfo.className}" title="${escapeHtml(quadInfo.tooltip)}">${quadInfo.label}</span>`
+                        : '';
                     
                     let result = escapeHtml(game.status?.type?.detail || '');
                     
@@ -86,7 +95,7 @@ permalink: /schedule/
                     // Desktop Table Row
                     tableRowsHtml += `<tr class="schedule-game-row" data-game-id="${escapeHtml(game.id)}" style="cursor: pointer;">
                         <td>${dateStr}</td>
-                        <td>${vsAt} ${logo}${oppName}</td>
+                        <td><span class="schedule-opp-cell">${vsAt} ${logo}<span>${oppName}</span>${quadPillHtml}</span></td>
                         <td>${result}</td>
                         <td id="val-${escapeHtml(game.id)}" style="font-size: 0.9em; color: #666;">-</td>
                         <td id="pick-${escapeHtml(game.id)}" style="font-size: 0.9em; color: #666;">-</td>
@@ -101,7 +110,7 @@ permalink: /schedule/
                         </div>
                         <div class="schedule-card-matchup">
                             ${logo}
-                            <span>${vsAt} ${oppName}</span>
+                            <span>${vsAt} ${oppName}</span>${quadPillHtml}
                         </div>
                         <div class="schedule-card-bottom">
                             <div class="schedule-card-chip">
@@ -189,7 +198,7 @@ permalink: /schedule/
                             if (topPlayer) {
                                 const cell = document.getElementById(`val-${game.id}`);
                                 const cardCell = document.getElementById(`val-card-${game.id}`);
-                                const topPlayerStr = `<strong>${escapeHtml(topPlayer)}</strong> (${maxVal})`;
+                                const topPlayerStr = `<strong>${escapeHtml(topPlayer)}</strong> <span class="roster-val-badge ${getValTierClass(maxVal)}">${maxVal}</span>`;
                                 if (cell) {
                                     cell.innerHTML = topPlayerStr;
                                     cell.style.color = '';
@@ -211,7 +220,7 @@ permalink: /schedule/
                                         const pickCardCell = document.getElementById(`pick-card-${game.id}`);
                                         const pickChip = document.getElementById(`pick-chip-${game.id}`);
                                         const playerName = player.athlete ? (player.athlete.shortName || player.athlete.displayName) : (playerMap[String(pickedPlayerId)] || playerMap[pickedPlayerId] || 'Unknown');
-                                        const pickStr = `<strong>${escapeHtml(playerName)}</strong> (${val})`;
+                                        const pickStr = `<strong>${escapeHtml(playerName)}</strong> <span class="roster-val-badge ${getValTierClass(val)}">${val}</span>`;
 
                                         if (pickCell) {
                                             pickCell.innerHTML = pickStr;

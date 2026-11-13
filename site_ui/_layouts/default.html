@@ -21,6 +21,23 @@
     <script src="{{ site.baseurl }}/common.js?v={{ site.time | date: '%s' }}"></script>
     {% endif %}
     <script src="{{ site.baseurl }}/helpers.js?v={{ site.time | date: '%s' }}"></script>
+    <script>
+        (function() {
+            try {
+                const params = new URLSearchParams(window.location.search);
+                const darkParam = params.get('dark');
+                if (darkParam === 'true' || darkParam === '1') {
+                    localStorage.setItem('darkMode', 'true');
+                } else if (darkParam === 'false' || darkParam === '0') {
+                    localStorage.setItem('darkMode', 'false');
+                }
+                const storedDarkMode = localStorage.getItem('darkMode');
+                if (storedDarkMode === 'true' || (storedDarkMode === null && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                    document.documentElement.classList.add('dark-mode');
+                }
+            } catch (e) {}
+        })();
+    </script>
 </head>
 <body>
     <header class="site-header">
@@ -47,7 +64,7 @@
         </div>
         <div id="user-dropdown" class="user-dropdown">
             <div style="position: relative;">
-                <img id="user-team-logo" style="width: 3rem; height: 3rem; margin-right: 10px; display: none; background-color: white; border-radius: 50%; padding: 2px; cursor: pointer;" onclick="toggleTeamSelector()">
+                <img id="user-team-logo" class="user-team-logo" style="display: none; background-color: white; border-radius: 50%; padding: 2px; cursor: pointer;" onclick="toggleTeamSelector()">
                 <div id="team-selector-backdrop" onclick="toggleTeamSelector()"></div>
                 <div id="team-selector" style="display:none; position: absolute; top: 110%; right: 0; background: white; padding: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.25); border-radius: 8px; z-index: 3000; width: 280px; color: black;">
                     <div class="team-selector-header">
@@ -80,10 +97,18 @@
             localStorage.setItem('league', urlLeague);
         }
         
-        // Initialize Dark Mode
+        // Initialize Dark Mode (supports ?dark=true URL param or localStorage)
+        const darkParam = layoutUrlParams.get('dark');
+        if (darkParam === 'true' || darkParam === '1') {
+            localStorage.setItem('darkMode', 'true');
+        } else if (darkParam === 'false' || darkParam === '0') {
+            localStorage.setItem('darkMode', 'false');
+        }
         const storedDarkMode = localStorage.getItem('darkMode');
-        if (storedDarkMode === 'true' || (storedDarkMode === null && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+        const isDark = storedDarkMode === 'true' || (storedDarkMode === null && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if (isDark) {
             document.body.classList.add('dark-mode');
+            document.documentElement.classList.add('dark-mode');
         }
 
         updateLeagueToggleUI(currentLeague);
@@ -140,10 +165,13 @@
         }
 
         function toggleDarkMode() {
-            document.body.classList.toggle('dark-mode');
-            const isDark = document.body.classList.contains('dark-mode');
-            localStorage.setItem('darkMode', isDark);
-            document.getElementById('dark-mode-toggle').textContent = isDark ? 'Dark Mode: On' : 'Dark Mode: Off';
+            const isDarkActive = document.body.classList.toggle('dark-mode');
+            document.documentElement.classList.toggle('dark-mode', isDarkActive);
+            localStorage.setItem('darkMode', isDarkActive);
+            const toggleBtn = document.getElementById('dark-mode-toggle');
+            if (toggleBtn) {
+                toggleBtn.textContent = isDarkActive ? 'Dark Mode: On' : 'Dark Mode: Off';
+            }
         }
 
         function toggleDropdown(id) {
@@ -327,6 +355,13 @@
             if (localStorage.getItem('isLoggedIn') !== 'true') return;
 
             async function checkUpcomingGames() {
+                const isMockLive = new URLSearchParams(window.location.search).get('mock') === 'live' || new URLSearchParams(window.location.search).get('demo') === 'live';
+                if (isMockLive) {
+                    const banner = document.getElementById('game-banner');
+                    if (banner) banner.style.display = 'none';
+                    return;
+                }
+
                 const now = new Date();
                 const currentLg = localStorage.getItem('league') || 'mens';
                 const leagues = currentLg === 'womens' ? ['womens', 'mens'] : ['mens', 'womens'];
@@ -337,6 +372,34 @@
                     try {
                         const data = await fetchTeamSchedule(sportPath, FAV_TEAM_ID);
                         if (data && data.events) {
+                            // Check if there is a game currently being played by that team
+                            const hasGameInProgress = data.events.some(e => {
+                                const statusObj = e.competitions?.[0]?.status?.type || e.status?.type;
+                                const state = statusObj?.state;
+                                const isCompleted = statusObj?.completed ?? (state === 'post');
+                                if (isCompleted || state === 'post') return false;
+                                const statusName = statusObj?.name || '';
+                                if (statusName.includes('POSTPONED') || statusName.includes('CANCEL')) return false;
+                                if (state === 'in') return true;
+                                if (e.date) {
+                                    const gameDate = new Date(e.date);
+                                    const elapsed = now - gameDate;
+                                    // Scheduled tip-off has occurred within normal game duration (3.5 hours) and not finished
+                                    if (elapsed >= 0 && elapsed < 3.5 * 60 * 60 * 1000) {
+                                        return true;
+                                    }
+                                }
+                                return false;
+                            });
+
+                            if (hasGameInProgress) {
+                                if (league === currentLg) {
+                                    upcomingGames = [];
+                                    break;
+                                }
+                                continue;
+                            }
+
                             const futureGames = data.events.filter(e => {
                                 const gameDate = new Date(e.date);
                                 const state = e.competitions?.[0]?.status?.type?.state;
@@ -426,11 +489,12 @@
                         }
                         const diff = target.date.getTime() - Date.now();
                         if (diff <= 0) {
-                            digitsEl.textContent = '🔒 Starting now!';
                             if (bannerCountdownInterval) {
                                 clearInterval(bannerCountdownInterval);
                                 bannerCountdownInterval = null;
                             }
+                            const banner = document.getElementById('game-banner');
+                            if (banner) banner.style.display = 'none';
                             return;
                         }
 
@@ -449,6 +513,13 @@
                     updateBannerTimer();
                     if (bannerCountdownInterval) clearInterval(bannerCountdownInterval);
                     bannerCountdownInterval = setInterval(updateBannerTimer, 1000);
+                } else {
+                    const banner = document.getElementById('game-banner');
+                    if (banner) banner.style.display = 'none';
+                    if (bannerCountdownInterval) {
+                        clearInterval(bannerCountdownInterval);
+                        bannerCountdownInterval = null;
+                    }
                 }
             }
             checkUpcomingGames();
