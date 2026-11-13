@@ -212,7 +212,7 @@ body.dark-mode .error { color: #ff6b6b; }
 .stats-table th { background-color: #f9f9f9; font-weight: bold; color: #555; }
 .picked-row { background-color: #e8f5e9; border-left: 3px solid #28a745; }
 .pick-container { text-align: center; margin-top: 20px; padding: 20px; background: #fff; border-radius: 8px; }
-.pick-select { padding: 8px; font-size: 1em; border-radius: 4px; border: 1px solid #ccc; }
+.pick-select { padding: 8px; font-size: 1em; border-radius: 4px; border: 1px solid #ccc; max-width: 100%; min-width: 0; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 body.dark-mode .pick-container { background-color: #2d2d2d; color: #e0e0e0; border: 1px solid #444; }
 body.dark-mode .pick-select { background-color: #1e1e1e; color: #e0e0e0; border-color: #555; }
 @media (max-width: 600px) {
@@ -973,9 +973,11 @@ body.dark-mode .btn-text-link:hover {
     justify-content: center;
     gap: 10px;
     align-items: center;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    width: 100%;
     max-width: 500px;
     margin: 0 auto;
+    box-sizing: border-box;
 }
 
 @media (max-width: 600px) {
@@ -985,7 +987,10 @@ body.dark-mode .btn-text-link:hover {
         gap: 12px;
     }
     .pick-select {
+        flex: none;
         width: 100%;
+        max-width: 100%;
+        min-width: 0;
         height: 48px;
         font-size: 16px;
         box-sizing: border-box;
@@ -2180,11 +2185,20 @@ body.dark-mode .pick-val-explainer {
     gap: 10px;
     align-items: center;
     justify-content: center;
+    flex-wrap: nowrap;
+    width: 100%;
     max-width: 500px;
     margin: 0 auto;
+    box-sizing: border-box;
+}
+.pick-controls-wrapper .pick-select {
+    flex: 1 1 0%;
+    min-width: 0;
+    max-width: 100%;
 }
 .pick-save-btn {
     white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .sb-group-member-details {
@@ -2229,8 +2243,12 @@ body.dark-mode .pick-val-explainer {
         max-width: 100%;
         margin: 0 auto;
     }
+    .pick-controls-wrapper .pick-select,
     .pick-select {
+        flex: none;
         width: 100%;
+        max-width: 100%;
+        min-width: 0;
         box-sizing: border-box;
     }
     .pick-save-btn {
