@@ -406,3 +406,45 @@ def test_pr_review_and_rework_worktree_rebase(tmp_path: Path, monkeypatch: pytes
             delete_branch="agent/issue-7",
             repo_root=str(local_dir),
         )
+
+
+def test_infer_and_backfill_manual_issue_spec(monkeypatch: pytest.MonkeyPatch) -> None:
+    manual_issue = {
+        "number": 4,
+        "title": "Fix schedule screen where score shows 0-0 while in-game",
+        "body": 'Fix schedule screen where score shows 0-0 while in-game\n\n<img src="https://example.com/img.png" />',
+        "labels": [{"name": "bug"}, {"name": "agent:ready"}],
+    }
+    inferred = agent_backlog.infer_task_spec(
+        title=manual_issue["title"],
+        body=manual_issue["body"],
+        labels=["bug", "agent:ready"],
+    )
+    assert "site_ui/schedule/index.html" in inferred["owned_paths"]
+    assert "site_ui/scoreboard/index.html" in inferred["owned_paths"]
+    assert "site_ui/helpers.js" in inferred["owned_paths"]
+    assert "firestore.rules" in inferred["forbidden_paths"]
+    assert inferred["verification_commands"] == ["python -m pytest -v"]
+
+    patched_payloads = []
+
+    def fake_github_request(method, path, payload=None, repo=None, token=None):
+        if method == "PATCH":
+            patched_payloads.append(payload)
+        return manual_issue
+
+    monkeypatch.setattr(agent_backlog, "github_request", fake_github_request)
+    spec, was_inferred, updated_body = agent_backlog.resolve_or_infer_issue_spec(
+        manual_issue,
+        persist=True,
+        repo="owner/repo",
+        token="tok",
+    )
+    assert was_inferred is True
+    assert spec["owned_paths"] == inferred["owned_paths"]
+    assert "```json agent-task-spec" in updated_body
+    assert len(patched_payloads) == 1
+    # Subsequent parse_task_spec on the backfilled body succeeds without inference
+    parsed = agent_backlog.parse_task_spec(updated_body)
+    assert parsed["owned_paths"] == inferred["owned_paths"]
+

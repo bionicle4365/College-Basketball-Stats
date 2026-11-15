@@ -756,6 +756,199 @@ def parse_task_spec(issue_body: str) -> Dict[str, Any]:
     return validate_task_spec(spec)
 
 
+_EXPLICIT_REPO_PATH_RE = re.compile(
+    r"(?<![A-Za-z0-9_./-])((?:site_ui|scripts|tests|docs)/[A-Za-z0-9_./-]+|firestore\.rules)(?![A-Za-z0-9_./-])"
+)
+
+_SCREEN_KEYWORD_PATHS: List[Tuple[Tuple[str, ...], List[str]]] = [
+    (("schedule",), ["site_ui/schedule/index.html"]),
+    (("scoreboard", "box score", "boxscore", "in-game", "live score"), ["site_ui/scoreboard/index.html"]),
+    (("roster",), ["site_ui/roster/index.html"]),
+    (("standings", "bpi", "quad", "quadrant", "bracket", "resume", "sos"), ["site_ui/standings/index.html"]),
+    (("group", "groups", "pick'em", "pickem", "leaderboard"), ["site_ui/group/index.html"]),
+    (("setting", "settings", "dark mode", "theme"), ["site_ui/settings/index.html"]),
+    (("login", "sign in", "signin", "auth"), ["site_ui/login/index.html"]),
+    (("pwa", "service worker", "manifest", "offline", "sw.js"), ["site_ui/sw.js", "site_ui/manifest.json"]),
+]
+
+_SHARED_UI_AND_TEST_PATHS: List[str] = [
+    "site_ui/helpers.js",
+    "site_ui/styles.css",
+    "docs/contracts/schemas_and_routes.json",
+    "tests/test_helpers_and_contracts.py",
+]
+
+
+def infer_task_spec(
+    title: str = "",
+    body: str = "",
+    labels: Optional[Sequence[str]] = None,
+) -> Dict[str, Any]:
+    """
+    Infer a complete, validated task specification for manually created GitHub Issues
+    that omit an `agent-task-spec` block or Markdown `Owned Paths` section.
+    """
+    raw_body = body or ""
+    raw_title = (title or "").strip()
+    label_set = {str(lbl).strip().lower() for lbl in (labels or []) if str(lbl).strip()}
+
+    owned_paths = _extract_markdown_section_items(raw_body, "Owned Paths")
+    forbidden_paths = _extract_markdown_section_items(raw_body, "Forbidden Paths")
+    acceptance_criteria = _extract_markdown_section_items(raw_body, "Acceptance Criteria")
+    verification_commands = _extract_markdown_section_items(raw_body, "Verification Commands")
+
+    combined_text = f"{raw_title}\n{raw_body}"
+    combined_lower = combined_text.lower()
+
+    if not owned_paths:
+        inferred_owned: List[str] = []
+
+        def _add_owned(path_str: str) -> None:
+            cleaned = path_str.strip().rstrip(".,;:)`'\"").replace("\\", "/")
+            if cleaned and cleaned not in inferred_owned:
+                inferred_owned.append(cleaned)
+
+        for match in _EXPLICIT_REPO_PATH_RE.finditer(combined_text):
+            _add_owned(match.group(1))
+
+        matched_ui = any(p.startswith("site_ui/") for p in inferred_owned)
+        for keywords, target_paths in _SCREEN_KEYWORD_PATHS:
+            if any(kw in combined_lower for kw in keywords):
+                for tp in target_paths:
+                    _add_owned(tp)
+                matched_ui = True
+
+        if "domain:pwa" in label_set:
+            _add_owned("site_ui/sw.js")
+            _add_owned("site_ui/manifest.json")
+            matched_ui = True
+
+        if "domain:groups-firestore" in label_set:
+            _add_owned("site_ui/group/index.html")
+            matched_ui = True
+
+        if matched_ui or any(
+            lbl in label_set for lbl in ("domain:site-ui", "domain:espn-api", "domain:analytics", "bug")
+        ):
+            for shared_path in _SHARED_UI_AND_TEST_PATHS:
+                _add_owned(shared_path)
+
+        if not inferred_owned:
+            for default_path in ("site_ui/", "docs/contracts/schemas_and_routes.json", "tests/"):
+                _add_owned(default_path)
+
+        owned_paths = inferred_owned
+
+    if not acceptance_criteria:
+        checklist_items: List[str] = []
+        for raw_line in raw_body.splitlines():
+            m = re.match(r"^\s*[-*]\s+\[[ xX]\]\s+(.+)$", raw_line)
+            if m and m.group(1).strip():
+                checklist_items.append(m.group(1).strip())
+        if checklist_items:
+            acceptance_criteria = checklist_items
+        else:
+            summary_goal = raw_title or "Resolve the issue described in the ticket"
+            acceptance_criteria = [
+                f"Resolve issue: {summary_goal}",
+                "Ensure all unit and contract tests pass (`python -m pytest -v`)",
+            ]
+
+    if not verification_commands:
+        verification_commands = ["python -m pytest -v"]
+
+    return validate_task_spec(
+        {
+            "owned_paths": owned_paths,
+            "forbidden_paths": forbidden_paths or None,
+            "acceptance_criteria": acceptance_criteria,
+            "verification_commands": verification_commands,
+            "objective": raw_title or None,
+        }
+    )
+
+
+def append_task_spec_to_body(body: str, spec: Dict[str, Any]) -> str:
+    """Append Markdown spec sections and an `agent-task-spec` JSON block to a manual issue body."""
+    validated = validate_task_spec(spec)
+    existing = (body or "").rstrip()
+    if SPEC_BLOCK_PATTERN.search(existing):
+        return existing
+
+    spec_json = json.dumps(
+        {
+            "owned_paths": validated["owned_paths"],
+            "forbidden_paths": validated["forbidden_paths"],
+            "acceptance_criteria": validated["acceptance_criteria"],
+            "verification_commands": validated["verification_commands"],
+        },
+        indent=2,
+    )
+
+    spec_block_lines = [
+        "## Owned Paths",
+        *[f"- `{p}`" for p in validated["owned_paths"]],
+        "",
+        "## Forbidden Paths",
+        *([f"- `{p}`" for p in validated["forbidden_paths"]] or ["- *(None)*"]),
+        "",
+        "## Acceptance Criteria",
+        *[f"- [ ] {item}" for item in validated["acceptance_criteria"]],
+        "",
+        "## Verification Commands",
+        *[f"- `{cmd}`" for cmd in validated["verification_commands"]],
+        "",
+        "```json agent-task-spec",
+        spec_json,
+        "```",
+    ]
+    suffix = "\n".join(spec_block_lines)
+    return f"{existing}\n\n{suffix}" if existing else suffix
+
+
+def resolve_or_infer_issue_spec(
+    issue: dict,
+    persist: bool = False,
+    repo: Optional[str] = None,
+    token: Optional[str] = None,
+) -> Tuple[Dict[str, Any], bool, str]:
+    """
+    Parse an issue's task spec or automatically infer one when missing.
+    When `persist=True` and the issue lacks an embedded `agent-task-spec` block,
+    PATCH the GitHub Issue body so the inferred spec is persisted on GitHub.
+    """
+    body = issue.get("body") or ""
+    title = issue.get("title") or ""
+    raw_labels = issue.get("labels") or []
+    label_names = [
+        (lbl.get("name", "") if isinstance(lbl, dict) else str(lbl))
+        for lbl in raw_labels
+    ]
+
+    try:
+        spec = parse_task_spec(body)
+        return (spec, False, body)
+    except Exception:
+        spec = infer_task_spec(title=title, body=body, labels=label_names)
+
+    updated_body = body
+    if persist and not SPEC_BLOCK_PATTERN.search(body):
+        issue_number = issue.get("number")
+        updated_body = append_task_spec_to_body(body, spec)
+        if issue_number is not None:
+            try:
+                github_request(
+                    "PATCH",
+                    f"/issues/{int(issue_number)}",
+                    payload={"body": updated_body},
+                    repo=repo,
+                    token=token,
+                )
+            except Exception:
+                pass
+    return (spec, True, updated_body)
+
+
 def _get_paginated_issues(
     state: str = "open",
     labels: Optional[List[str]] = None,
@@ -938,13 +1131,21 @@ def get_task_issue(
     issue_number: int,
     repo: Optional[str] = None,
     token: Optional[str] = None,
+    persist_inferred_spec: bool = False,
 ) -> Dict[str, Any]:
-    """Fetch a single issue and parse its embedded task specification."""
+    """Fetch a single issue and parse or infer its task specification."""
     issue = github_request("GET", f"/issues/{issue_number}", repo=repo, token=token)
     spec: Optional[Dict[str, Any]] = None
     spec_error: Optional[str] = None
+    spec_inferred = False
+    resolved_body = issue.get("body", "") or ""
     try:
-        spec = parse_task_spec(issue.get("body", ""))
+        spec, spec_inferred, resolved_body = resolve_or_infer_issue_spec(
+            issue,
+            persist=persist_inferred_spec,
+            repo=repo,
+            token=token,
+        )
     except Exception as exc:
         spec_error = str(exc)
 
@@ -955,8 +1156,9 @@ def get_task_issue(
         "html_url": issue.get("html_url"),
         "labels": [lbl.get("name") for lbl in issue.get("labels", [])],
         "spec": spec,
+        "spec_inferred": spec_inferred,
         "spec_error": spec_error,
-        "body": issue.get("body", ""),
+        "body": resolved_body,
     }
 
 
@@ -973,7 +1175,7 @@ def approve_task_issue(
     repo: Optional[str] = None,
     token: Optional[str] = None,
 ) -> dict:
-    """Approve a proposed issue by transitioning its status label to `agent:ready`."""
+    """Approve a proposed issue by transitioning its status label to `agent:ready` and ensuring a task spec."""
     target_repo = repo or detect_repo_slug()
     auth_token = token or get_github_token()
 
@@ -981,10 +1183,24 @@ def approve_task_issue(
     current_labels = [lbl.get("name", "") for lbl in issue.get("labels", [])]
     new_labels = _replace_status_label(current_labels, "agent:ready")
 
+    _, spec_inferred, updated_body = resolve_or_infer_issue_spec(
+        issue,
+        persist=False,
+        repo=target_repo,
+        token=auth_token,
+    )
+    patch_payload: Dict[str, Any] = {"labels": new_labels}
+    if spec_inferred and updated_body != (issue.get("body") or ""):
+        patch_payload["body"] = append_task_spec_to_body(issue.get("body") or "", infer_task_spec(
+            title=issue.get("title") or "",
+            body=issue.get("body") or "",
+            labels=new_labels,
+        ))
+
     updated = github_request(
         "PATCH",
         f"/issues/{issue_number}",
-        payload={"labels": new_labels},
+        payload=patch_payload,
         repo=target_repo,
         token=auth_token,
     )
@@ -1006,7 +1222,7 @@ def claim_task_issue(
     repo: Optional[str] = None,
     token: Optional[str] = None,
 ) -> dict:
-    """Transition an approved `agent:ready` issue to `agent:in-progress` and post a claim comment."""
+    """Transition an approved `agent:ready` issue to `agent:in-progress`, persisting an inferred spec if missing."""
     if branch is not None:
         branch = validate_agent_branch(branch)
     target_repo = repo or detect_repo_slug()
@@ -1022,10 +1238,21 @@ def claim_task_issue(
         )
     new_labels = _replace_status_label(current_labels, "agent:in-progress")
 
+    spec, spec_inferred, _ = resolve_or_infer_issue_spec(
+        issue,
+        persist=False,
+        repo=target_repo,
+        token=auth_token,
+    )
+    patch_payload: Dict[str, Any] = {"labels": new_labels}
+    raw_body = issue.get("body") or ""
+    if spec_inferred and not SPEC_BLOCK_PATTERN.search(raw_body):
+        patch_payload["body"] = append_task_spec_to_body(raw_body, spec)
+
     updated = github_request(
         "PATCH",
         f"/issues/{issue_number}",
-        payload={"labels": new_labels},
+        payload=patch_payload,
         repo=target_repo,
         token=auth_token,
     )
@@ -1064,7 +1291,7 @@ def get_next_ready_issue(
     if not issues:
         return None
     top_number = int(issues[0]["number"])
-    task = get_task_issue(top_number, repo=repo, token=token)
+    task = get_task_issue(top_number, repo=repo, token=token, persist_inferred_spec=True)
     task["branch"] = f"agent/issue-{top_number}"
     task["mode"] = "new"
     return task
@@ -1651,7 +1878,7 @@ def list_prs_to_review(
         spec_error: Optional[str] = None
         if bundle["linked_issue"]:
             try:
-                spec = parse_task_spec(bundle["linked_issue"].get("body", ""))
+                spec, _, _ = resolve_or_infer_issue_spec(bundle["linked_issue"], persist=False, repo=target_repo, token=auth_token)
             except Exception as exc:
                 spec_error = str(exc)
 
@@ -2089,8 +2316,9 @@ def _build_parser() -> argparse.ArgumentParser:
     list_p.add_argument("--state", choices=["open", "closed", "all"], default="open")
     list_p.add_argument("--json", action="store_true")
 
-    get_p = subparsers.add_parser("get", help="Fetch an issue and parse its task spec")
+    get_p = subparsers.add_parser("get", help="Fetch an issue and parse or infer its task spec")
     get_p.add_argument("issue_number", type=int)
+    get_p.add_argument("--persist-spec", action="store_true", help="Persist inferred task spec onto the GitHub issue body if missing")
     get_p.add_argument("--json", action="store_true")
 
     next_p = subparsers.add_parser("next", help="Fetch the highest-priority rework PR or approved (agent:ready) task")
@@ -2232,12 +2460,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 0
 
     if args.command == "get":
-        data = get_task_issue(args.issue_number, repo=args.repo)
+        data = get_task_issue(args.issue_number, repo=args.repo, persist_inferred_spec=args.persist_spec)
         if args.json:
             print(json.dumps(data, indent=2))
         else:
             print(f"#{data['number']} {data['title']} ({data['state']}) - {data['html_url']}")
             print(f"Labels: {', '.join(data['labels'])}")
+            if data.get("spec_inferred"):
+                print("Spec Source: Inferred from issue title/body/labels")
             if data["spec_error"]:
                 print(f"Spec Error: {data['spec_error']}")
             else:

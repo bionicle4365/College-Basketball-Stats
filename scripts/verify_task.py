@@ -272,7 +272,7 @@ def _verify_task_impl(
     resolved_cmds: List[str] = list(verify_cmds or [])
 
     if issue_number is not None:
-        issue_data = agent_backlog.get_task_issue(issue_number, repo=repo)
+        issue_data = agent_backlog.get_task_issue(issue_number, repo=repo, persist_inferred_spec=True)
         if issue_data.get("spec_error") or not issue_data.get("spec"):
             print(f"ERROR: Could not parse task spec from issue #{issue_number}: {issue_data.get('spec_error')}")
             return 1
