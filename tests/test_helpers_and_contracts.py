@@ -106,6 +106,7 @@ assert(html.includes('+53'));
 assert(html.includes('67.9%'));
 assert(html.includes('71.0%'));
 assert(html.includes('2.5'));
+assert(!html.includes('val-formula-math-box'));
 
 const zeroDetails = sandbox.getValDetails(zeroStats, labels);
 const zeroHtml = sandbox.renderValBreakdownHtml(zeroDetails, 'Bench Player', 'NC State #152');

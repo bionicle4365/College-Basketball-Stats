@@ -377,8 +377,6 @@ function renderValBreakdownHtml(details, playerName, teamInfo) {
     const scorePillClass = getValTierClass(total);
     const scorePillSign = total > 0 ? '+' : '';
 
-    const mathString = `VAL = ${pts} (PTS) + ${threePt.m} (3PM) - ${fg.a} (FGA) + ${fg.m * 2} (2×FGM) - ${ft.a} (FTA) + ${ft.m} (FTM) + ${reb} (REB) + ${ast * 2} (2×AST) + ${stl * 4} (4×STL) + ${blk * 4} (4×BLK) - ${tov * 2} (2×TO) = ${total}`;
-
     return `
         <div class="val-formula-header">
             <div>
@@ -394,10 +392,6 @@ function renderValBreakdownHtml(details, playerName, teamInfo) {
         <p class="val-intro-text" style="margin-bottom: 12px;">
             Live efficiency and performance breakdown for <strong>${escapeHtml(playerName || 'player')}</strong> based on ESPN Standard Fantasy VAL scoring.
         </p>
-
-        <div class="val-formula-math-box">
-            <code>${escapeHtml(mathString)}</code>
-        </div>
 
         <div class="val-section-title">Advanced Shooting &amp; Playmaking Efficiency</div>
         <div class="val-efficiency-strip">
