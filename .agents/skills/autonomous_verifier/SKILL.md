@@ -9,6 +9,7 @@ description: Verifies autonomous agent work against GitHub Issue task specificat
 1. **Load Issue Spec**: Run `python scripts/agent_backlog.py get <issue_number>` to retrieve `owned_paths`, `forbidden_paths`, `acceptance_criteria`, and `verification_commands`.
 2. **Run Deterministic Gate**: Execute `python scripts/verify_task.py --cwd <worktree_path> --issue <issue_number>` to verify:
    - Active git branch is an isolated `agent/...` branch (never `main` or `master`).
+   - `HEAD` includes every commit from the freshly-fetched `origin/main` branch.
    - Modified/untracked files stay strictly within `owned_paths` and never touch `forbidden_paths`.
    - `python -m pytest` (including Node-backed `site_ui/helpers.js` tests and contract checks) and all issue `verification_commands` exit `0`.
 3. **Inspect Diff, Examples & Screenshots**:

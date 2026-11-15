@@ -8,8 +8,8 @@ description: Coordinates agentic flows across specialized domain skills (Site UI
 ### GitHub Issues Backlog Integration
 Autonomous tasks are discovered via [task-generator](file:///d:/Git/College-Basketball-Stats/.agents/skills/task_generator/SKILL.md) ([audit_and_generate_tasks.py](file:///d:/Git/College-Basketball-Stats/scripts/audit_and_generate_tasks.py)), proposed weekly via [feature-enhancer](file:///d:/Git/College-Basketball-Stats/.agents/skills/feature_enhancer/SKILL.md) ([propose_feature_tasks.py](file:///d:/Git/College-Basketball-Stats/scripts/propose_feature_tasks.py)), queued as GitHub Issues via [agent_backlog.py](file:///d:/Git/College-Basketball-Stats/scripts/agent_backlog.py), and gated by [verify_task.py](file:///d:/Git/College-Basketball-Stats/scripts/verify_task.py):
 - **Initialize repo labels**: `python scripts/agent_backlog.py init`
-- **Audit codebase & telemetry**: `python scripts/audit_and_generate_tasks.py --run-tests --espn --ci --publish`
-- **Propose weekly features**: `python scripts/propose_feature_tasks.py --publish`
+- **Audit codebase & telemetry (in isolated `origin/main` worktree)**: `python scripts/audit_and_generate_tasks.py --worktree --run-tests --espn --ci --publish`
+- **Propose weekly features (in isolated `origin/main` worktree)**: `python scripts/propose_feature_tasks.py --worktree --publish`
 - **List proposed issues**: `python scripts/agent_backlog.py list --status proposed`
 - **Approve issue**: `python scripts/agent_backlog.py approve <issue_number>` (transitions `agent:proposed` -> `agent:ready`)
 - **Claim next approved task & isolated worktree**: `python scripts/agent_backlog.py next --claim --worktree --reclaim-stale-hours 6 --agent scheduled-executor --json`

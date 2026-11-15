@@ -61,6 +61,62 @@ def check_branch_safety(branch: str) -> Tuple[bool, str]:
     return (True, "")
 
 
+def check_base_branch_freshness(
+    base_branch: str = "main",
+    explicit_base: Optional[str] = None,
+    fetch: bool = True,
+    cwd: Optional[str] = None,
+) -> Tuple[bool, str, Optional[str]]:
+    """Verify `HEAD` includes every commit from the latest `origin/<base_branch>` (or `explicit_base`)."""
+    if explicit_base:
+        base_commit_ref = explicit_base.split("...", 1)[0].split("..", 1)[0].strip()
+        diff_ref = explicit_base if ("..." in explicit_base or ".." in explicit_base) else f"{base_commit_ref}...HEAD"
+        if base_commit_ref and agent_backlog._ref_exists(base_commit_ref, cwd=cwd):
+            probe = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", base_commit_ref, "HEAD"],
+                cwd=cwd,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if probe.returncode != 0:
+                return (
+                    False,
+                    f"Active branch is behind or not branched from '{base_commit_ref}'. "
+                    f"Rebase onto '{base_commit_ref}' before completing verification.",
+                    None,
+                )
+        return (True, f"HEAD includes '{base_commit_ref}'", diff_ref)
+
+    has_origin = agent_backlog._has_git_remote("origin", cwd=cwd)
+    try:
+        resolved_base = agent_backlog._resolve_base_ref(
+            base_branch=base_branch,
+            require_fetch=fetch and has_origin,
+            cwd=cwd,
+        )
+    except RuntimeError as exc:
+        if has_origin:
+            return (False, str(exc), None)
+        return (True, "No 'origin' remote or 'main' branch in local-only repo", None)
+
+    probe = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", resolved_base, "HEAD"],
+        cwd=cwd,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if probe.returncode != 0:
+        return (
+            False,
+            f"Active branch is behind or not branched from latest '{resolved_base}'. "
+            f"Run 'git fetch origin {base_branch} && git rebase {resolved_base}' or recreate the worktree from latest '{base_branch}'.",
+            None,
+        )
+    return (True, f"HEAD includes latest '{resolved_base}'", f"{resolved_base}...HEAD")
+
+
 def resolve_default_base_ref() -> Optional[str]:
     """Return `origin/main...HEAD` (or `main...HEAD`) when available for committed-branch diffs."""
     for candidate in ("origin/main", "main"):
@@ -238,7 +294,11 @@ def _verify_task_impl(
             print(f"ERROR: {branch_err}")
             return 1
         print(f"Branch safety check: PASSED ({branch})")
-        resolved_base = base_ref if base_ref is not None else resolve_default_base_ref()
+        fresh_ok, fresh_msg, resolved_base = check_base_branch_freshness(explicit_base=base_ref)
+        if not fresh_ok:
+            print(f"ERROR: {fresh_msg}")
+            return 1
+        print(f"Base branch freshness check: PASSED ({fresh_msg})")
         if resolved_base:
             print(f"Diff base: {resolved_base}")
         modified_files = get_modified_files(base_ref=resolved_base)

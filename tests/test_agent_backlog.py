@@ -2,8 +2,52 @@
 
 from __future__ import annotations
 
+import os
+import subprocess
+from pathlib import Path
 import pytest
 from scripts import agent_backlog
+
+
+def _git(cwd: Path, *args: str) -> str:
+    proc = subprocess.run(
+        ["git", *args],
+        cwd=str(cwd),
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    return proc.stdout.strip()
+
+
+def _init_repo_with_origin(tmp_path: Path):
+    """Create a bare `origin.git`, a `seed` clone, and a `local` clone on `main`."""
+    origin_dir = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "--bare", "--initial-branch=main", str(origin_dir)], check=True, capture_output=True)
+
+    seed_dir = tmp_path / "seed"
+    subprocess.run(["git", "clone", str(origin_dir), str(seed_dir)], check=True, capture_output=True)
+    _git(seed_dir, "config", "user.email", "test@example.com")
+    _git(seed_dir, "config", "user.name", "Test User")
+    (seed_dir / "README.md").write_text("v1\n", encoding="utf-8")
+    _git(seed_dir, "add", "README.md")
+    _git(seed_dir, "commit", "-m", "initial v1")
+    _git(seed_dir, "push", "-u", "origin", "main")
+    c1 = _git(seed_dir, "rev-parse", "HEAD")
+
+    local_dir = tmp_path / "local"
+    subprocess.run(["git", "clone", str(origin_dir), str(local_dir)], check=True, capture_output=True)
+    _git(local_dir, "config", "user.email", "test@example.com")
+    _git(local_dir, "config", "user.name", "Test User")
+
+    # Advance origin/main to c2 via seed_dir so local_dir's main & origin/main are stale
+    (seed_dir / "README.md").write_text("v2\n", encoding="utf-8")
+    _git(seed_dir, "add", "README.md")
+    _git(seed_dir, "commit", "-m", "advance main v2")
+    _git(seed_dir, "push", "origin", "main")
+    c2 = _git(seed_dir, "rev-parse", "HEAD")
+
+    return origin_dir, seed_dir, local_dir, c1, c2
 
 
 def test_validate_agent_branch_enforces_prefix() -> None:
@@ -68,3 +112,61 @@ def test_format_pr_body_includes_diff_examples_screenshots_and_verification() ->
     assert "## Screenshots & Visual Preview" in pr_body
     assert "![After (Dark Mode)](https://example.com/dark.png)" in pr_body
     assert "## Verification & Test Results" in pr_body
+
+
+def test_prepare_task_worktree_branches_from_latest_origin_main(tmp_path: Path) -> None:
+    _, _, local_dir, c1, c2 = _init_repo_with_origin(tmp_path)
+    # Put local_dir on a separate branch with uncommitted changes to ensure isolation
+    _git(local_dir, "checkout", "-b", "feature/local-wip")
+    (local_dir / "wip.txt").write_text("dirty\n", encoding="utf-8")
+    assert _git(local_dir, "rev-parse", "main") == c1
+
+    wt_path = agent_backlog.prepare_task_worktree("agent/issue-99", repo_root=str(local_dir))
+    try:
+        assert _git(Path(wt_path), "rev-parse", "--abbrev-ref", "HEAD") == "agent/issue-99"
+        assert _git(Path(wt_path), "rev-parse", "HEAD") == c2
+        assert (Path(wt_path) / "README.md").read_text(encoding="utf-8") == "v2\n"
+    finally:
+        agent_backlog.cleanup_task_worktree(wt_path, delete_branch="agent/issue-99", repo_root=str(local_dir))
+
+    assert not os.path.exists(wt_path)
+
+
+def test_prepare_task_worktree_fails_loudly_when_origin_fetch_fails(tmp_path: Path) -> None:
+    repo_dir = tmp_path / "broken"
+    subprocess.run(["git", "init", "--initial-branch=main", str(repo_dir)], check=True, capture_output=True)
+    _git(repo_dir, "config", "user.email", "test@example.com")
+    _git(repo_dir, "config", "user.name", "Test User")
+    (repo_dir / "README.md").write_text("local\n", encoding="utf-8")
+    _git(repo_dir, "add", "README.md")
+    _git(repo_dir, "commit", "-m", "local init")
+    _git(repo_dir, "remote", "add", "origin", str(tmp_path / "does-not-exist.git"))
+
+    with pytest.raises(RuntimeError, match="Failed to fetch latest 'origin/main'"):
+        agent_backlog.prepare_task_worktree("agent/issue-100", repo_root=str(repo_dir))
+
+
+def test_push_task_branch_rejects_outdated_branch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _, _, local_dir, c1, _ = _init_repo_with_origin(tmp_path)
+    _git(local_dir, "checkout", "-b", "agent/issue-101", c1)
+    (local_dir / "work.txt").write_text("change\n", encoding="utf-8")
+    _git(local_dir, "add", "work.txt")
+    _git(local_dir, "commit", "-m", "stale base commit")
+
+    monkeypatch.chdir(local_dir)
+    with pytest.raises(RuntimeError, match="behind or not branched from the latest 'origin/main'"):
+        agent_backlog.push_task_branch("agent/issue-101")
+
+
+def test_temporary_agent_worktree_cleans_up_worktree_and_branch(tmp_path: Path) -> None:
+    _, _, local_dir, _, c2 = _init_repo_with_origin(tmp_path)
+
+    with agent_backlog.temporary_agent_worktree("agent/audit-main", repo_root=str(local_dir)) as wt_path:
+        assert os.path.isdir(wt_path)
+        assert _git(Path(wt_path), "rev-parse", "--abbrev-ref", "HEAD") == "agent/audit-main"
+        assert _git(Path(wt_path), "rev-parse", "HEAD") == c2
+        assert (Path(wt_path) / "README.md").read_text(encoding="utf-8") == "v2\n"
+
+    assert not os.path.exists(wt_path)
+    branches = _git(local_dir, "branch", "--list", "agent/audit-main")
+    assert branches == ""

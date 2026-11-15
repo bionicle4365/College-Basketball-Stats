@@ -28,6 +28,21 @@ except ImportError:
 ASSETS_BRANCH = "agent-assets"
 
 
+def _ensure_fresh_ref(ref: Optional[str], repo_root: str = ".") -> None:
+    """If `ref` targets `origin/<branch>`, fetch it first so screenshots use the latest remote commit."""
+    if not ref:
+        return
+    cleaned = ref.strip()
+    if cleaned.startswith("origin/"):
+        branch_name = cleaned[len("origin/"):]
+        if branch_name:
+            agent_backlog._fetch_remote_branch(
+                base_branch=branch_name,
+                remote_name="origin",
+                cwd=repo_root,
+            )
+
+
 def read_file_from_ref(rel_path: str, ref: Optional[str] = None, repo_root: str = ".") -> str:
     """Read a repository file either from the working tree (`ref=None`) or a git ref."""
     norm = rel_path.strip().replace("\\", "/")
@@ -349,6 +364,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "val-modal":
+        _ensure_fresh_ref(args.ref)
         shots = render_val_modal_screenshots(
             output_dir=args.out_dir,
             ref=args.ref,
@@ -358,6 +374,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return 0
 
     if args.command == "custom":
+        _ensure_fresh_ref(args.ref)
         with open(args.html_file, "r", encoding="utf-8") as f:
             body_html = f.read()
         css_text = read_file_from_ref("site_ui/styles.css", ref=args.ref)

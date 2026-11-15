@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
 from datetime import datetime, timezone
 import json
 import os
@@ -13,7 +14,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 DEFAULT_REPO = "bionicle4365/College-Basketball-Stats"
 GITHUB_API_BASE = "https://api.github.com"
@@ -105,10 +106,11 @@ def validate_agent_branch(branch: str) -> str:
     return cleaned
 
 
-def get_current_git_branch() -> str:
+def get_current_git_branch(cwd: Optional[str] = None) -> str:
     """Return the active local git branch name."""
     proc = subprocess.run(
         ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        cwd=cwd,
         text=True,
         capture_output=True,
         check=True,
@@ -116,32 +118,175 @@ def get_current_git_branch() -> str:
     return proc.stdout.strip()
 
 
-def push_task_branch(branch: Optional[str] = None) -> str:
-    """Safely push a validated `agent/...` branch to `origin`, refusing while on `main`/`master`."""
+def _get_canonical_repo_root(cwd: Optional[str] = None) -> str:
+    """Return the primary repository root even when invoked from inside a git worktree."""
+    common_proc = subprocess.run(
+        ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        cwd=cwd,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if common_proc.returncode == 0 and common_proc.stdout.strip():
+        common_dir = os.path.normpath(common_proc.stdout.strip())
+        if os.path.basename(common_dir) == ".git":
+            return os.path.dirname(common_dir)
+
+    top_proc = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        cwd=cwd,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if top_proc.returncode == 0 and top_proc.stdout.strip():
+        return os.path.normpath(top_proc.stdout.strip())
+    return os.path.abspath(cwd or os.getcwd())
+
+
+def _has_git_remote(remote_name: str = "origin", cwd: Optional[str] = None) -> bool:
+    """Return True if the specified git remote is configured in the repository."""
+    proc = subprocess.run(
+        ["git", "remote", "get-url", remote_name],
+        cwd=cwd,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return proc.returncode == 0 and bool(proc.stdout.strip())
+
+
+def _ref_exists(ref: str, cwd: Optional[str] = None) -> bool:
+    """Return True if `ref` resolves to a valid git commit object."""
+    proc = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"],
+        cwd=cwd,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return proc.returncode == 0
+
+
+def _fetch_remote_branch(
+    base_branch: str = "main",
+    remote_name: str = "origin",
+    cwd: Optional[str] = None,
+) -> str:
+    """Fetch `refs/heads/<base_branch>` from `remote_name` into `refs/remotes/<remote_name>/<base_branch>`."""
+    remote_ref = f"{remote_name}/{base_branch}"
+    refspec = f"+refs/heads/{base_branch}:refs/remotes/{remote_name}/{base_branch}"
+    proc = subprocess.run(
+        ["git", "fetch", remote_name, refspec],
+        cwd=cwd,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip() or f"exit code {proc.returncode}"
+        raise RuntimeError(f"Failed to fetch latest '{remote_ref}' from remote '{remote_name}': {detail}")
+    if not _ref_exists(remote_ref, cwd=cwd):
+        raise RuntimeError(f"Fetched '{remote_name}', but '{remote_ref}' could not be resolved.")
+    return remote_ref
+
+
+def _resolve_base_ref(
+    base_branch: str = "main",
+    require_fetch: bool = True,
+    cwd: Optional[str] = None,
+) -> str:
+    """Fetch `origin/<base_branch>` when `origin` exists and return the latest base ref."""
+    remote_ref = f"origin/{base_branch}"
+    if _has_git_remote("origin", cwd=cwd):
+        if require_fetch:
+            return _fetch_remote_branch(base_branch=base_branch, remote_name="origin", cwd=cwd)
+        try:
+            return _fetch_remote_branch(base_branch=base_branch, remote_name="origin", cwd=cwd)
+        except RuntimeError:
+            if _ref_exists(remote_ref, cwd=cwd):
+                return remote_ref
+
+    for candidate in (remote_ref, base_branch):
+        if _ref_exists(candidate, cwd=cwd):
+            return candidate
+
+    raise RuntimeError(
+        f"Could not resolve base branch '{remote_ref}' or '{base_branch}'."
+    )
+
+
+def ensure_branch_based_on_latest(
+    target_ref: str = "HEAD",
+    base_branch: str = "main",
+    fetch: bool = True,
+    cwd: Optional[str] = None,
+) -> str:
+    """Verify `target_ref` includes every commit from the latest `origin/<base_branch>`."""
+    resolved_base = _resolve_base_ref(base_branch=base_branch, require_fetch=fetch, cwd=cwd)
+    probe = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", resolved_base, target_ref],
+        cwd=cwd,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if probe.returncode != 0:
+        active_label = target_ref
+        if target_ref == "HEAD":
+            try:
+                active_label = get_current_git_branch(cwd=cwd)
+            except subprocess.CalledProcessError:
+                pass
+        raise RuntimeError(
+            f"Branch '{active_label}' is behind or not branched from the latest '{resolved_base}'. "
+            f"Rebase onto '{resolved_base}' (e.g. 'git fetch origin {base_branch} && git rebase {resolved_base}') "
+            "or recreate the worktree from latest main before continuing."
+        )
+    return resolved_base
+
+
+def _verify_checked_out_base(wt_path: str, expected_branch: str, expected_base_ref: str) -> None:
+    """Verify `wt_path` has `expected_branch` checked out at the exact commit of `expected_base_ref`."""
+    active = get_current_git_branch(cwd=wt_path)
+    if active != expected_branch:
+        raise RuntimeError(
+            f"Expected branch '{expected_branch}' in '{wt_path}', found '{active}'."
+        )
+    head_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=wt_path,
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
+    base_sha = subprocess.run(
+        ["git", "rev-parse", f"{expected_base_ref}^{{commit}}"],
+        cwd=wt_path,
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
+    if head_sha != base_sha:
+        raise RuntimeError(
+            f"Branch '{expected_branch}' in '{wt_path}' ({head_sha}) does not match "
+            f"'{expected_base_ref}' ({base_sha})."
+        )
+
+
+def push_task_branch(branch: Optional[str] = None, base_branch: str = "main") -> str:
+    """Safely push a validated `agent/...` branch based on latest `main`, refusing while on `main`/`master`."""
     current = get_current_git_branch()
     if current in PROTECTED_BRANCHES:
         raise ValueError(f"Refusing to push while checked out on protected branch '{current}'.")
     target = validate_agent_branch(branch or current)
+    if branch is not None and current != target:
+        raise ValueError(
+            f"Checked out branch '{current}' does not match requested push branch '{target}'."
+        )
+    ensure_branch_based_on_latest(target_ref=target, base_branch=base_branch, fetch=True)
     subprocess.run(["git", "push", "-u", "origin", f"{target}:{target}"], check=True)
     return target
-
-
-def _resolve_base_ref(base_branch: str = "main") -> str:
-    """Fetch `origin/<base_branch>` when available and return the cleanest base ref."""
-    subprocess.run(
-        ["git", "fetch", "origin", base_branch],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    remote_ref = f"origin/{base_branch}"
-    probe = subprocess.run(
-        ["git", "rev-parse", "--verify", "--quiet", remote_ref],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
-    return remote_ref if probe.returncode == 0 else base_branch
 
 
 def prepare_task_branch(branch: str, base_branch: str = "main") -> str:
@@ -158,8 +303,9 @@ def prepare_task_branch(branch: str, base_branch: str = "main") -> str:
             "Working tree has uncommitted changes. Commit/stash them or pass '--worktree' "
             "to isolate the task branch from local edits."
         )
-    resolved_base = _resolve_base_ref(base_branch=base_branch)
+    resolved_base = _resolve_base_ref(base_branch=base_branch, require_fetch=True)
     subprocess.run(["git", "checkout", "-B", target, resolved_base], check=True)
+    _verify_checked_out_base(".", target, resolved_base)
     return target
 
 
@@ -167,30 +313,72 @@ def prepare_task_worktree(
     branch: str,
     worktree_path: Optional[str] = None,
     base_branch: str = "main",
+    repo_root: Optional[str] = None,
 ) -> str:
-    """Create an isolated `scratch/worktrees/...` checkout on `branch` rooted at `origin/main`."""
+    """Create an isolated `scratch/worktrees/...` checkout on `branch` rooted at latest `origin/main`."""
     target = validate_agent_branch(branch)
-    top_proc = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        text=True,
-        capture_output=True,
-        check=False,
+    root = os.path.abspath(repo_root) if repo_root else _get_canonical_repo_root()
+    wt_path = os.path.abspath(
+        worktree_path or os.path.join(root, "scratch", "worktrees", target.replace("/", "-"))
     )
-    repo_root = top_proc.stdout.strip() if top_proc.returncode == 0 and top_proc.stdout.strip() else os.getcwd()
-    wt_path = worktree_path or os.path.join(repo_root, "scratch", "worktrees", target.replace("/", "-"))
-    resolved_base = _resolve_base_ref(base_branch=base_branch)
+    resolved_base = _resolve_base_ref(base_branch=base_branch, require_fetch=True, cwd=root)
 
     if os.path.exists(wt_path):
         subprocess.run(
             ["git", "worktree", "remove", "--force", wt_path],
+            cwd=root,
             text=True,
             capture_output=True,
             check=False,
         )
-    subprocess.run(["git", "worktree", "prune"], text=True, capture_output=True, check=False)
+    subprocess.run(["git", "worktree", "prune"], cwd=root, text=True, capture_output=True, check=False)
     os.makedirs(os.path.dirname(wt_path), exist_ok=True)
-    subprocess.run(["git", "worktree", "add", "-B", target, wt_path, resolved_base], check=True)
+    subprocess.run(["git", "worktree", "add", "-B", target, wt_path, resolved_base], cwd=root, check=True)
+    _verify_checked_out_base(wt_path, target, resolved_base)
     return wt_path.replace("\\", "/")
+
+
+def cleanup_task_worktree(
+    worktree_path: str,
+    delete_branch: Optional[str] = None,
+    repo_root: Optional[str] = None,
+) -> None:
+    """Remove an isolated git worktree and optionally delete its temporary `agent/...` branch."""
+    root = os.path.abspath(repo_root) if repo_root else _get_canonical_repo_root()
+    wt_abs = os.path.abspath(worktree_path)
+    if os.path.exists(wt_abs):
+        subprocess.run(
+            ["git", "worktree", "remove", "--force", wt_abs],
+            cwd=root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    subprocess.run(["git", "worktree", "prune"], cwd=root, text=True, capture_output=True, check=False)
+    if delete_branch:
+        target = validate_agent_branch(delete_branch)
+        subprocess.run(
+            ["git", "branch", "-D", target],
+            cwd=root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+
+@contextmanager
+def temporary_agent_worktree(
+    branch: str,
+    base_branch: str = "main",
+    repo_root: Optional[str] = None,
+) -> Iterator[str]:
+    """Context manager yielding an isolated worktree on `branch` from latest `origin/main` and cleaning it up."""
+    root = os.path.abspath(repo_root) if repo_root else _get_canonical_repo_root()
+    wt_path = prepare_task_worktree(branch=branch, base_branch=base_branch, repo_root=root)
+    try:
+        yield wt_path
+    finally:
+        cleanup_task_worktree(wt_path, delete_branch=branch, repo_root=root)
 
 
 def detect_repo_slug(fallback: str = DEFAULT_REPO) -> str:
@@ -844,7 +1032,10 @@ def update_task_issue(
 
 def _collect_git_diff_files(base_branch: str = "main", head_ref: str = "HEAD") -> List[Dict[str, Any]]:
     """Return changed files with added/deleted line counts against `origin/<base_branch>` when in a git checkout."""
-    base_ref = _resolve_base_ref(base_branch=base_branch)
+    try:
+        base_ref = _resolve_base_ref(base_branch=base_branch, require_fetch=False)
+    except RuntimeError:
+        return []
     proc = subprocess.run(
         ["git", "diff", "--numstat", f"{base_ref}...{head_ref}"],
         text=True,
@@ -1028,7 +1219,7 @@ def complete_task_issue(
         head_branch = validate_agent_branch(pr or f"agent/issue-{issue_number}")
 
     if push:
-        push_task_branch(head_branch)
+        push_task_branch(head_branch, base_branch=base_branch)
 
     target_repo = repo or detect_repo_slug()
     auth_token = token or get_github_token()
@@ -1217,6 +1408,16 @@ def _build_parser() -> argparse.ArgumentParser:
     complete_p.add_argument("--close", action="store_true")
     complete_p.add_argument("--cwd", dest="sub_cwd", default=None, help="Optional working directory (e.g. git worktree)")
 
+    wt_p = subparsers.add_parser("worktree", help="Create an isolated git worktree on an agent/... branch from latest origin/main")
+    wt_p.add_argument("--branch", required=True, help="Target agent/... branch name")
+    wt_p.add_argument("--base", default="main", help="Base branch to fetch and branch from (default: main)")
+    wt_p.add_argument("--path", default=None, help="Optional worktree directory path")
+    wt_p.add_argument("--json", action="store_true")
+
+    clean_wt_p = subparsers.add_parser("cleanup-worktree", help="Remove an isolated git worktree and optionally delete its temporary branch")
+    clean_wt_p.add_argument("--path", required=True, help="Path to the worktree directory to remove")
+    clean_wt_p.add_argument("--delete-branch", default=None, help="Optional agent/... branch name to delete after removal")
+
     return parser
 
 
@@ -1367,6 +1568,36 @@ def main(argv: Optional[List[str]] = None) -> int:
         pr_url = (updated.get("pull_request") or {}).get("html_url")
         pr_suffix = f" | PR: {pr_url}" if pr_url else ""
         print(f"Completed #{updated['number']} -> {state_str} ({updated['html_url']}){pr_suffix}")
+        return 0
+
+    if args.command == "worktree":
+        wt_path = prepare_task_worktree(
+            branch=args.branch,
+            worktree_path=args.path,
+            base_branch=args.base,
+        )
+        head_sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=wt_path,
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout.strip()
+        payload = {
+            "branch": validate_agent_branch(args.branch),
+            "base_branch": args.base,
+            "head_sha": head_sha,
+            "worktree_path": wt_path,
+        }
+        if args.json:
+            print(json.dumps(payload, indent=2))
+        else:
+            print(f"Prepared isolated worktree on '{payload['branch']}' at {wt_path} (HEAD={head_sha[:7]})")
+        return 0
+
+    if args.command == "cleanup-worktree":
+        cleanup_task_worktree(worktree_path=args.path, delete_branch=args.delete_branch)
+        print(f"Removed worktree: {args.path}")
         return 0
 
     return 1

@@ -6,9 +6,9 @@ description: Discovers actionable engineering tasks from contract drift, Firesto
 ## Guidelines for Autonomous Task Discovery (Every 8h)
 
 ### 1. Live Telemetry, CI & Codebase Audits
-Run the deterministic audit script to inspect contract synchronization, Firestore rules alignment, Firebase placeholder safety, CSP headers, unit test suites, live ESPN API endpoints, and GitHub Actions CI on `main`:
+Run the deterministic audit script with `--worktree` so it fetches the latest `origin/main` and audits a clean `agent/audit-main` branch worktree (never a stale or dirty local checkout) for contract synchronization, Firestore rules alignment, Firebase placeholder safety, CSP headers, unit test suites, live ESPN API endpoints, and GitHub Actions CI on `main`:
 ```powershell
-python scripts/audit_and_generate_tasks.py --run-tests --espn --ci --publish --max-new-issues 3 --max-open-proposed 5
+python scripts/audit_and_generate_tasks.py --worktree --run-tests --espn --ci --publish --max-new-issues 3 --max-open-proposed 5
 ```
 What the deterministic audit covers:
 - **Contract & Firestore Rules Drift (`source:data-drift`)**: Diffs [schemas_and_routes.json](file:///d:/Git/College-Basketball-Stats/docs/contracts/schemas_and_routes.json) against [firestore.rules](file:///d:/Git/College-Basketball-Stats/firestore.rules), top-level functions in [helpers.js](file:///d:/Git/College-Basketball-Stats/site_ui/helpers.js), precached assets in [sw.js](file:///d:/Git/College-Basketball-Stats/site_ui/sw.js), and declared page templates in `site_ui/`.

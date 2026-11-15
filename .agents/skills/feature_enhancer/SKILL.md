@@ -6,9 +6,9 @@ description: Weekly product and UX feature proposer that inspects docs/product_r
 ## Guidelines for Weekly Feature & Enhancement Proposals
 
 ### 1. Inspect Backlog & Propose Balanced Roadmap Features
-Run the deterministic feature proposer script to check open/closed `source:feature` and `source:roadmap` issues and publish up to 2 deduplicated feature proposals across underrepresented product pillars:
+Run the deterministic feature proposer script with `--worktree` (creating an isolated `agent/feature-proposer` worktree from the latest `origin/main`) to check open/closed `source:feature` and `source:roadmap` issues and publish up to 2 deduplicated feature proposals across underrepresented product pillars:
 ```powershell
-python scripts/propose_feature_tasks.py --publish --max-new-features 2 --max-open-features 4
+python scripts/propose_feature_tasks.py --worktree --publish --max-new-features 2 --max-open-features 4
 ```
 
 ### 2. Four Core Product Pillars ([product_roadmap.md](file:///d:/Git/College-Basketball-Stats/docs/product_roadmap.md))

@@ -581,6 +581,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Audit system health/gaps and generate GitHub Issue tasks")
     parser.add_argument("--repo-root", default=".", help="Path to repository root")
     parser.add_argument("--repo", default=None, help="GitHub repo slug owner/name")
+    parser.add_argument("--worktree", action="store_true", help="Audit an isolated agent/... worktree branched from latest origin/main")
+    parser.add_argument("--base-branch", default="main", help="Base branch to fetch when --worktree is enabled (default: main)")
     parser.add_argument("--max-new-issues", type=int, default=3, help="Maximum net-new issues created per 24h window")
     parser.add_argument("--max-open-proposed", type=int, default=5, help="Maximum open agent:proposed audit issues allowed before pausing")
     parser.add_argument("--run-tests", action="store_true", help="Run live pytest suite")
@@ -595,13 +597,27 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
-    tasks = collect_all_tasks(
-        repo_root=args.repo_root,
-        run_tests=args.run_tests,
-        check_espn=args.espn,
-        check_ci=args.ci,
-        repo=args.repo,
-    )
+    if args.worktree:
+        with agent_backlog.temporary_agent_worktree(
+            branch="agent/audit-main",
+            base_branch=args.base_branch,
+            repo_root=args.repo_root,
+        ) as wt_path:
+            tasks = collect_all_tasks(
+                repo_root=wt_path,
+                run_tests=args.run_tests,
+                check_espn=args.espn,
+                check_ci=args.ci,
+                repo=args.repo,
+            )
+    else:
+        tasks = collect_all_tasks(
+            repo_root=args.repo_root,
+            run_tests=args.run_tests,
+            check_espn=args.espn,
+            check_ci=args.ci,
+            repo=args.repo,
+        )
 
     published: List[Dict[str, Any]] = []
     if args.publish and tasks:

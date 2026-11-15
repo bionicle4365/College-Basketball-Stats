@@ -454,7 +454,10 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Weekly New Feature / Feature Enhancement proposer for College-Basketball-Stats"
     )
+    parser.add_argument("--repo-root", default=".", help="Path to repository root")
     parser.add_argument("--repo", default=None, help="GitHub repo slug owner/name")
+    parser.add_argument("--worktree", action="store_true", help="Run inside an isolated agent/... worktree branched from latest origin/main")
+    parser.add_argument("--base-branch", default="main", help="Base branch to fetch when --worktree is enabled (default: main)")
     parser.add_argument("--max-new-features", type=int, default=2, help="Max new feature issues per run")
     parser.add_argument("--max-open-features", type=int, default=4, help="Max open feature/roadmap issues allowed")
     parser.add_argument("--publish", action="store_true", help="Publish candidate feature specs as agent:proposed GitHub Issues")
@@ -466,12 +469,30 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
 
-    report = audit_and_propose_features(
-        repo=args.repo,
-        max_new_features=args.max_new_features,
-        max_open_features=args.max_open_features,
-        publish=args.publish,
-    )
+    if args.worktree:
+        with agent_backlog.temporary_agent_worktree(
+            branch="agent/feature-proposer",
+            base_branch=args.base_branch,
+            repo_root=args.repo_root,
+        ) as wt_path:
+            prev_cwd = os.getcwd()
+            try:
+                os.chdir(wt_path)
+                report = audit_and_propose_features(
+                    repo=args.repo,
+                    max_new_features=args.max_new_features,
+                    max_open_features=args.max_open_features,
+                    publish=args.publish,
+                )
+            finally:
+                os.chdir(prev_cwd)
+    else:
+        report = audit_and_propose_features(
+            repo=args.repo,
+            max_new_features=args.max_new_features,
+            max_open_features=args.max_open_features,
+            publish=args.publish,
+        )
 
     if args.json:
         print(json.dumps(report, indent=2))
