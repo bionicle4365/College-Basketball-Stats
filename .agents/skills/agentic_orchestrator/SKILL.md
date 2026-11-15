@@ -12,10 +12,11 @@ Autonomous tasks are discovered via [task-generator](file:///d:/Git/College-Bask
 - **Propose weekly features (in isolated `origin/main` worktree)**: `python scripts/propose_feature_tasks.py --worktree --publish`
 - **List proposed issues**: `python scripts/agent_backlog.py list --status proposed`
 - **Approve issue**: `python scripts/agent_backlog.py approve <issue_number>` (transitions `agent:proposed` -> `agent:ready`)
-- **Claim next approved task & isolated worktree**: `python scripts/agent_backlog.py next --claim --worktree --reclaim-stale-hours 6 --agent scheduled-executor --json`
+- **Claim next rework PR or approved task & isolated worktree**: `python scripts/agent_backlog.py next --claim --worktree --include-rework --reclaim-stale-hours 6 --agent scheduled-executor --json`
 - **Verify task**: `python scripts/verify_task.py --cwd <worktree_path> --issue <issue_number>`
 - **Capture & publish UI screenshots (for visual changes)**: `python scripts/capture_screenshots.py ...` and `python scripts/capture_screenshots.py publish ...` (publishes to isolated `agent-assets` branch)
-- **Complete task & open rich PR**: `python scripts/agent_backlog.py complete <issue_number> --cwd <worktree_path> --pr agent/issue-<issue_number> --push --open-pr --summary "..." --examples "..." --verification "..." --screenshot "Caption=URL"`
+- **Complete task & open/update rich PR**: `python scripts/agent_backlog.py complete <issue_number> --cwd <worktree_path> --pr agent/issue-<issue_number> --push --force-with-lease --open-pr --update-pr --summary "..." --examples "..." --verification "..." --screenshot "Caption=URL"`
+- **Review open PRs**: See [code-reviewer](file:///d:/Git/College-Basketball-Stats/.agents/skills/code_reviewer/SKILL.md) (`review-queue`, `pr-worktree`, `submit-review`)
 - **Block stuck task**: `python scripts/agent_backlog.py block <issue_number> --reason "..."`
 
 ### Domain Identification

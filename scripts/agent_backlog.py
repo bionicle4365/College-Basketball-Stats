@@ -23,6 +23,11 @@ SPEC_BLOCK_PATTERN = re.compile(
     r"```json\s+agent-task-spec\s*\r?\n(.*?)\r?\n```",
     re.DOTALL,
 )
+AUTO_REVIEW_MARKER_RE = re.compile(
+    r"<!--\s*auto-review:sha=([^\s>]+)(?:\s+verdict=([a-z-]+))?(?:\s+round=(\d+))?\s*-->"
+)
+AUTO_EXECUTOR_MARKER_RE = re.compile(r"<!--\s*auto-executor:[^\s>]+.*?-->")
+MAX_AUTO_REVIEW_ROUNDS = 3
 
 STATUS_LABELS: Dict[str, Tuple[str, str]] = {
     "agent:proposed": (
@@ -41,9 +46,24 @@ STATUS_LABELS: Dict[str, Tuple[str, str]] = {
         "1D76DB",
         "Implementation complete; awaiting verifier or human PR review",
     ),
+    "agent:changes-requested": (
+        "E99695",
+        "PR review requested changes; ready for autonomous rework",
+    ),
     "agent:blocked": (
         "D93F0B",
         "Blocked by external dependency, failing check, or ambiguity",
+    ),
+}
+
+REVIEW_LABELS: Dict[str, Tuple[str, str]] = {
+    "review:approved": (
+        "0E8A16",
+        "Automated code review approved the latest PR commit",
+    ),
+    "review:changes-requested": (
+        "D93F0B",
+        "Automated or human code review requested changes",
     ),
 }
 
@@ -86,6 +106,7 @@ DOMAIN_LABELS: Dict[str, Tuple[str, str]] = {
 
 STANDARD_LABELS: Dict[str, Tuple[str, str]] = {
     **STATUS_LABELS,
+    **REVIEW_LABELS,
     **SOURCE_LABELS,
     **PRIORITY_LABELS,
     **DOMAIN_LABELS,
@@ -274,7 +295,11 @@ def _verify_checked_out_base(wt_path: str, expected_branch: str, expected_base_r
         )
 
 
-def push_task_branch(branch: Optional[str] = None, base_branch: str = "main") -> str:
+def push_task_branch(
+    branch: Optional[str] = None,
+    base_branch: str = "main",
+    force_with_lease: bool = False,
+) -> str:
     """Safely push a validated `agent/...` branch based on latest `main`, refusing while on `main`/`master`."""
     current = get_current_git_branch()
     if current in PROTECTED_BRANCHES:
@@ -285,7 +310,11 @@ def push_task_branch(branch: Optional[str] = None, base_branch: str = "main") ->
             f"Checked out branch '{current}' does not match requested push branch '{target}'."
         )
     ensure_branch_based_on_latest(target_ref=target, base_branch=base_branch, fetch=True)
-    subprocess.run(["git", "push", "-u", "origin", f"{target}:{target}"], check=True)
+    cmd = ["git", "push"]
+    if force_with_lease:
+        cmd.append("--force-with-lease")
+    cmd.extend(["-u", "origin", f"{target}:{target}"])
+    subprocess.run(cmd, check=True)
     return target
 
 
@@ -309,6 +338,28 @@ def prepare_task_branch(branch: str, base_branch: str = "main") -> str:
     return target
 
 
+def _reset_and_add_worktree(
+    root: str,
+    wt_path: str,
+    local_branch: str,
+    start_ref: str,
+) -> str:
+    """Remove any stale worktree at `wt_path` and create a fresh worktree on `local_branch` at `start_ref`."""
+    if os.path.exists(wt_path):
+        subprocess.run(
+            ["git", "worktree", "remove", "--force", wt_path],
+            cwd=root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    subprocess.run(["git", "worktree", "prune"], cwd=root, text=True, capture_output=True, check=False)
+    os.makedirs(os.path.dirname(wt_path), exist_ok=True)
+    subprocess.run(["git", "worktree", "add", "-B", local_branch, wt_path, start_ref], cwd=root, check=True)
+    _verify_checked_out_base(wt_path, local_branch, start_ref)
+    return wt_path.replace("\\", "/")
+
+
 def prepare_task_worktree(
     branch: str,
     worktree_path: Optional[str] = None,
@@ -322,20 +373,107 @@ def prepare_task_worktree(
         worktree_path or os.path.join(root, "scratch", "worktrees", target.replace("/", "-"))
     )
     resolved_base = _resolve_base_ref(base_branch=base_branch, require_fetch=True, cwd=root)
+    return _reset_and_add_worktree(root, wt_path, target, resolved_base)
 
-    if os.path.exists(wt_path):
-        subprocess.run(
-            ["git", "worktree", "remove", "--force", wt_path],
-            cwd=root,
+
+def prepare_pr_review_worktree(
+    head_branch: str,
+    worktree_path: Optional[str] = None,
+    base_branch: str = "main",
+    repo_root: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Create an isolated worktree checking out remote PR branch `origin/<head_branch>` and check freshness vs `origin/main`."""
+    target = validate_agent_branch(head_branch)
+    root = os.path.abspath(repo_root) if repo_root else _get_canonical_repo_root()
+    resolved_base = _resolve_base_ref(base_branch=base_branch, require_fetch=True, cwd=root)
+    remote_head = _fetch_remote_branch(base_branch=target, remote_name="origin", cwd=root)
+
+    review_branch = f"agent/review-{target.replace('/', '-')}"
+    wt_path = os.path.abspath(
+        worktree_path or os.path.join(root, "scratch", "worktrees", review_branch.replace("/", "-"))
+    )
+    wt_posix = _reset_and_add_worktree(root, wt_path, review_branch, remote_head)
+
+    head_sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=wt_posix,
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout.strip()
+    ancestor_probe = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", resolved_base, "HEAD"],
+        cwd=wt_posix,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return {
+        "worktree_path": wt_posix,
+        "branch": review_branch,
+        "head_branch": target,
+        "head_sha": head_sha,
+        "base_ref": resolved_base,
+        "behind_main": ancestor_probe.returncode != 0,
+    }
+
+
+def prepare_rework_worktree(
+    head_branch: str,
+    worktree_path: Optional[str] = None,
+    base_branch: str = "main",
+    repo_root: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Create an isolated worktree on `head_branch` from `origin/<head_branch>` and rebase onto latest `origin/main`."""
+    target = validate_agent_branch(head_branch)
+    root = os.path.abspath(repo_root) if repo_root else _get_canonical_repo_root()
+    resolved_base = _resolve_base_ref(base_branch=base_branch, require_fetch=True, cwd=root)
+    start_ref = (
+        _fetch_remote_branch(base_branch=target, remote_name="origin", cwd=root)
+        if _has_git_remote("origin", cwd=root)
+        else target
+    )
+    wt_path = os.path.abspath(
+        worktree_path or os.path.join(root, "scratch", "worktrees", target.replace("/", "-"))
+    )
+    wt_posix = _reset_and_add_worktree(root, wt_path, target, start_ref)
+
+    rebased = False
+    rebase_conflict = False
+    ancestor_probe = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", resolved_base, "HEAD"],
+        cwd=wt_posix,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if ancestor_probe.returncode != 0:
+        rebase_proc = subprocess.run(
+            ["git", "rebase", resolved_base],
+            cwd=wt_posix,
             text=True,
             capture_output=True,
             check=False,
         )
-    subprocess.run(["git", "worktree", "prune"], cwd=root, text=True, capture_output=True, check=False)
-    os.makedirs(os.path.dirname(wt_path), exist_ok=True)
-    subprocess.run(["git", "worktree", "add", "-B", target, wt_path, resolved_base], cwd=root, check=True)
-    _verify_checked_out_base(wt_path, target, resolved_base)
-    return wt_path.replace("\\", "/")
+        if rebase_proc.returncode == 0:
+            rebased = True
+        else:
+            subprocess.run(
+                ["git", "rebase", "--abort"],
+                cwd=wt_posix,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            rebase_conflict = True
+
+    return {
+        "worktree_path": wt_posix,
+        "branch": target,
+        "base_ref": resolved_base,
+        "rebased": rebased,
+        "rebase_conflict": rebase_conflict,
+    }
 
 
 def cleanup_task_worktree(
@@ -427,6 +565,12 @@ def get_github_token() -> str:
     raise RuntimeError(
         "No GitHub token found in GITHUB_TOKEN, GH_TOKEN, or git credential helper."
     )
+
+
+def get_github_reviewer_token() -> str:
+    """Retrieve `REVIEWER_GITHUB_TOKEN` when configured, falling back to `get_github_token()`."""
+    token = os.environ.get("REVIEWER_GITHUB_TOKEN", "").strip()
+    return token or get_github_token()
 
 
 def github_request(
@@ -901,22 +1045,28 @@ def claim_task_issue(
 def get_next_ready_issue(
     domain: Optional[str] = None,
     reclaim_stale_hours: Optional[float] = None,
+    include_rework: bool = False,
     repo: Optional[str] = None,
     token: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
-    """Fetch the highest-priority `agent:ready` issue, parse its spec, and suggest a feature branch."""
+    """Fetch the next task: PR rework first (if `include_rework`), otherwise highest-priority `agent:ready` issue."""
     if reclaim_stale_hours is not None and reclaim_stale_hours > 0:
         reclaim_stale_in_progress_issues(
             max_age_hours=reclaim_stale_hours,
             repo=repo,
             token=token,
         )
+    if include_rework:
+        rework_task = get_next_rework_pr(domain=domain, repo=repo, token=token)
+        if rework_task is not None:
+            return rework_task
     issues = list_task_issues(status="ready", domain=domain, state="open", repo=repo, token=token)
     if not issues:
         return None
     top_number = int(issues[0]["number"])
     task = get_task_issue(top_number, repo=repo, token=token)
     task["branch"] = f"agent/issue-{top_number}"
+    task["mode"] = "new"
     return task
 
 
@@ -971,11 +1121,17 @@ def reclaim_stale_in_progress_issues(
         current_labels = [lbl.get("name", "") for lbl in item.get("labels", [])]
 
         if open_prs:
-            new_labels = _replace_status_label(current_labels, "agent:review")
-            pr_url = open_prs[0].get("html_url", "")
+            pr_obj = open_prs[0]
+            pr_labels = {lbl.get("name", "") for lbl in pr_obj.get("labels", [])}
+            needs_changes = bool(
+                {"agent:changes-requested", "review:changes-requested"} & pr_labels
+            )
+            target_status = "agent:changes-requested" if needs_changes else "agent:review"
+            new_labels = _replace_status_label(current_labels, target_status)
+            pr_url = pr_obj.get("html_url", "")
             comment = (
                 f"Detected open Pull Request ({pr_url}) on stale `agent:in-progress` issue "
-                f"({age_hours:.1f}h old); transitioning to `agent:review`."
+                f"({age_hours:.1f}h old); transitioning to `{target_status}`."
             )
         else:
             new_labels = _replace_status_label(current_labels, "agent:ready")
@@ -1197,6 +1353,551 @@ def create_or_get_pull_request(
     return {"deduplicated": False, "pull_request": created}
 
 
+def extract_issue_number_from_pr(pr: dict) -> Optional[int]:
+    """Extract the linked GitHub Issue number from an `agent/issue-<N>` branch or PR body."""
+    head_ref = str((pr.get("head") or {}).get("ref") or "").strip()
+    branch_match = re.match(r"^agent/issue-(\d+)$", head_ref)
+    if branch_match:
+        return int(branch_match.group(1))
+    body = str(pr.get("body") or "")
+    body_match = re.search(r"(?:closes|fixes|resolves)\s+#(\d+)", body, re.IGNORECASE)
+    if body_match:
+        return int(body_match.group(1))
+    return None
+
+
+def _get_paginated_pulls(
+    state: str = "open",
+    base: str = "main",
+    repo: Optional[str] = None,
+    token: Optional[str] = None,
+) -> List[dict]:
+    """Fetch repository pull requests targeting `base` across pages."""
+    pulls: List[dict] = []
+    page = 1
+    while True:
+        query = urllib.parse.urlencode(
+            {"state": state, "base": base, "per_page": 100, "page": page}
+        )
+        batch = github_request("GET", f"/pulls?{query}", repo=repo, token=token) or []
+        if not batch:
+            break
+        pulls.extend(batch)
+        if len(batch) < 100:
+            break
+        page += 1
+    return pulls
+
+
+def _format_auto_review_marker(head_sha: str, verdict: str, round_num: int) -> str:
+    """Return an HTML comment marker tracking reviewed commit SHAs and review round counts."""
+    return f"<!-- auto-review:sha={head_sha} verdict={verdict} round={round_num} -->"
+
+
+def _is_automation_comment(body: str) -> bool:
+    """Return True if a PR/issue comment was generated by the automated reviewer or executor."""
+    text = (body or "").strip()
+    if not text:
+        return True
+    if AUTO_REVIEW_MARKER_RE.search(text) or AUTO_EXECUTOR_MARKER_RE.search(text):
+        return True
+    if text.startswith((
+        "Claimed by autonomous agent",
+        "Verification passed and task implementation",
+        "Approved for autonomous execution",
+        "Blocked during autonomous execution",
+        "Detected open Pull Request",
+        "Reclaimed stale `agent:in-progress`",
+    )):
+        return True
+    return False
+
+
+def _sync_labels_removing_review_state(current_labels: List[str], target_status: Optional[str] = None) -> List[str]:
+    """Strip `review:*` and `agent:changes-requested` labels and optionally set `target_status`."""
+    cleaned = [
+        lbl for lbl in current_labels
+        if lbl not in REVIEW_LABELS and lbl != "agent:changes-requested"
+    ]
+    if target_status:
+        return _replace_status_label(cleaned, target_status)
+    return cleaned
+
+
+def analyze_pr_review_state(
+    pr: dict,
+    reviews: List[dict],
+    review_comments: List[dict],
+    issue_comments: List[dict],
+    latest_commit_at: Optional[datetime] = None,
+    linked_issue: Optional[dict] = None,
+) -> Dict[str, Any]:
+    """Evaluate whether a PR needs automated review or rework based on reviews, labels, and comments."""
+    head = pr.get("head") or {}
+    head_sha = str(head.get("sha") or "").strip()
+    pr_labels = [lbl.get("name", "") for lbl in pr.get("labels", [])]
+    issue_labels = [lbl.get("name", "") for lbl in (linked_issue or {}).get("labels", [])]
+    combined_labels = set(pr_labels) | set(issue_labels)
+    is_blocked = "agent:blocked" in combined_labels
+
+    reviewed_shas: List[str] = []
+    max_round = 0
+    auto_review_count = 0
+    latest_executor_dt: Optional[datetime] = None
+
+    for entry in [*reviews, *issue_comments]:
+        body = str(entry.get("body") or "")
+        for match in AUTO_REVIEW_MARKER_RE.finditer(body):
+            sha_val = match.group(1)
+            if sha_val and sha_val not in reviewed_shas:
+                reviewed_shas.append(sha_val)
+            auto_review_count += 1
+            if match.group(3):
+                max_round = max(max_round, int(match.group(3)))
+        if AUTO_EXECUTOR_MARKER_RE.search(body):
+            exec_dt = _parse_github_iso_timestamp(entry.get("created_at") or entry.get("submitted_at"))
+            if exec_dt and (latest_executor_dt is None or exec_dt > latest_executor_dt):
+                latest_executor_dt = exec_dt
+
+    auto_review_rounds = max(max_round, auto_review_count)
+    effective_commit_dt = latest_commit_at
+    if latest_executor_dt and (effective_commit_dt is None or latest_executor_dt > effective_commit_dt):
+        effective_commit_dt = latest_executor_dt
+
+    rework_reasons: List[str] = []
+    feedback_items: List[Dict[str, Any]] = []
+
+    if not is_blocked:
+        if "agent:changes-requested" in combined_labels or "review:changes-requested" in combined_labels:
+            rework_reasons.append("PR or linked issue carries changes-requested label")
+
+        # Track latest formal review state per reviewer login
+        latest_formal_by_user: Dict[str, dict] = {}
+        for rev in sorted(
+            reviews,
+            key=lambda r: str(r.get("submitted_at") or r.get("created_at") or ""),
+        ):
+            state = str(rev.get("state") or "").upper()
+            if state in ("APPROVED", "CHANGES_REQUESTED", "DISMISSED"):
+                user_login = str((rev.get("user") or {}).get("login") or f"id:{rev.get('id')}")
+                latest_formal_by_user[user_login] = rev
+
+        for rev in latest_formal_by_user.values():
+            if str(rev.get("state") or "").upper() == "CHANGES_REQUESTED":
+                sub_dt = _parse_github_iso_timestamp(rev.get("submitted_at") or rev.get("created_at"))
+                rev_sha = str(rev.get("commit_id") or "").strip()
+                is_active = (
+                    (sub_dt is not None and effective_commit_dt is not None and sub_dt >= effective_commit_dt)
+                    or (head_sha and rev_sha == head_sha)
+                )
+                if is_active:
+                    rework_reasons.append(
+                        f"CHANGES_REQUESTED review by {(rev.get('user') or {}).get('login', 'reviewer')}"
+                    )
+
+        # Check human PR conversation or inline review comments posted after latest commit
+        for c in review_comments:
+            body = str(c.get("body") or "").strip()
+            if not body or _is_automation_comment(body):
+                continue
+            created_dt = _parse_github_iso_timestamp(c.get("created_at"))
+            if effective_commit_dt is not None and created_dt is not None and created_dt > effective_commit_dt:
+                rework_reasons.append(
+                    f"New inline review comment on {c.get('path', 'PR')} by {(c.get('user') or {}).get('login', 'reviewer')}"
+                )
+
+        for c in issue_comments:
+            body = str(c.get("body") or "").strip()
+            if not body or _is_automation_comment(body):
+                continue
+            created_dt = _parse_github_iso_timestamp(c.get("created_at"))
+            if effective_commit_dt is not None and created_dt is not None and created_dt > effective_commit_dt:
+                rework_reasons.append(
+                    f"New PR comment by {(c.get('user') or {}).get('login', 'reviewer')}"
+                )
+
+        # Collect relevant feedback items whenever rework is needed
+        if rework_reasons:
+            for rev in reviews:
+                body = str(rev.get("body") or "").strip()
+                state = str(rev.get("state") or "").upper()
+                if state == "CHANGES_REQUESTED" or "verdict=changes-requested" in body:
+                    feedback_items.append({
+                        "source": "review",
+                        "author": (rev.get("user") or {}).get("login"),
+                        "state": state,
+                        "commit_id": rev.get("commit_id"),
+                        "created_at": rev.get("submitted_at") or rev.get("created_at"),
+                        "body": body,
+                    })
+            for c in review_comments:
+                body = str(c.get("body") or "").strip()
+                if not body:
+                    continue
+                feedback_items.append({
+                    "source": "inline_comment",
+                    "author": (c.get("user") or {}).get("login"),
+                    "path": c.get("path"),
+                    "line": c.get("line") or c.get("original_line"),
+                    "created_at": c.get("created_at"),
+                    "body": body,
+                })
+            for c in issue_comments:
+                body = str(c.get("body") or "").strip()
+                if not body or AUTO_EXECUTOR_MARKER_RE.search(body):
+                    continue
+                if AUTO_REVIEW_MARKER_RE.search(body) and "verdict=changes-requested" not in body:
+                    continue
+                feedback_items.append({
+                    "source": "pr_comment",
+                    "author": (c.get("user") or {}).get("login"),
+                    "created_at": c.get("created_at"),
+                    "body": body,
+                })
+
+    needs_rework = bool(rework_reasons) and not is_blocked
+    needs_auto_review = (
+        not is_blocked
+        and not needs_rework
+        and bool(head_sha)
+        and head_sha not in reviewed_shas
+    )
+
+    return {
+        "head_sha": head_sha,
+        "reviewed_shas": reviewed_shas,
+        "auto_review_rounds": auto_review_rounds,
+        "is_blocked": is_blocked,
+        "needs_rework": needs_rework,
+        "needs_auto_review": needs_auto_review,
+        "rework_reasons": rework_reasons,
+        "feedback_items": feedback_items,
+    }
+
+
+def _fetch_pr_review_bundle(
+    pr: dict,
+    repo: Optional[str] = None,
+    token: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Fetch PR reviews, inline comments, PR comments, head commit timestamp, and linked issue."""
+    pr_number = int(pr["number"])
+    head = pr.get("head") or {}
+    head_sha = str(head.get("sha") or "").strip()
+    reviews = github_request("GET", f"/pulls/{pr_number}/reviews", repo=repo, token=token) or []
+    review_comments = github_request("GET", f"/pulls/{pr_number}/comments", repo=repo, token=token) or []
+    issue_comments = github_request("GET", f"/issues/{pr_number}/comments", repo=repo, token=token) or []
+
+    latest_commit_at: Optional[datetime] = None
+    if head_sha:
+        try:
+            commit_obj = github_request("GET", f"/commits/{head_sha}", repo=repo, token=token) or {}
+            commit_inner = commit_obj.get("commit") or {}
+            raw_date = (
+                (commit_inner.get("committer") or {}).get("date")
+                or (commit_inner.get("author") or {}).get("date")
+            )
+            latest_commit_at = _parse_github_iso_timestamp(raw_date)
+        except Exception:
+            latest_commit_at = None
+
+    issue_number = extract_issue_number_from_pr(pr)
+    linked_issue: Optional[dict] = None
+    if issue_number is not None:
+        try:
+            linked_issue = github_request("GET", f"/issues/{issue_number}", repo=repo, token=token)
+        except Exception:
+            linked_issue = None
+
+    analysis = analyze_pr_review_state(
+        pr=pr,
+        reviews=reviews,
+        review_comments=review_comments,
+        issue_comments=issue_comments,
+        latest_commit_at=latest_commit_at,
+        linked_issue=linked_issue,
+    )
+    return {
+        "pr": pr,
+        "pr_number": pr_number,
+        "issue_number": issue_number,
+        "linked_issue": linked_issue,
+        "analysis": analysis,
+    }
+
+
+def list_prs_to_review(
+    repo: Optional[str] = None,
+    max_rounds: int = MAX_AUTO_REVIEW_ROUNDS,
+    token: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Return open `agent/...` Pull Requests targeting `main` whose latest commit awaits review."""
+    target_repo = repo or detect_repo_slug()
+    auth_token = token or get_github_reviewer_token()
+    pulls = _get_paginated_pulls(state="open", base="main", repo=target_repo, token=auth_token)
+    queue: List[Dict[str, Any]] = []
+
+    for pr in pulls:
+        head_ref = str((pr.get("head") or {}).get("ref") or "").strip()
+        if not head_ref.startswith("agent/"):
+            continue
+        bundle = _fetch_pr_review_bundle(pr, repo=target_repo, token=auth_token)
+        analysis = bundle["analysis"]
+        if not analysis["needs_auto_review"]:
+            continue
+
+        issue_number = bundle["issue_number"]
+        spec: Optional[Dict[str, Any]] = None
+        spec_error: Optional[str] = None
+        if bundle["linked_issue"]:
+            try:
+                spec = parse_task_spec(bundle["linked_issue"].get("body", ""))
+            except Exception as exc:
+                spec_error = str(exc)
+
+        queue.append({
+            "pr_number": bundle["pr_number"],
+            "title": pr.get("title"),
+            "html_url": pr.get("html_url"),
+            "head_branch": head_ref,
+            "head_sha": analysis["head_sha"],
+            "base_branch": str((pr.get("base") or {}).get("ref") or "main"),
+            "issue_number": issue_number,
+            "spec": spec,
+            "spec_error": spec_error,
+            "auto_review_rounds": analysis["auto_review_rounds"],
+            "max_rounds_reached": analysis["auto_review_rounds"] >= max_rounds,
+        })
+
+    return queue
+
+
+def _update_issue_or_pr_labels(
+    number: int,
+    new_labels: List[str],
+    repo: Optional[str] = None,
+    token: Optional[str] = None,
+) -> dict:
+    """Update labels on a GitHub Issue or Pull Request."""
+    return github_request(
+        "PATCH",
+        f"/issues/{number}",
+        payload={"labels": new_labels},
+        repo=repo,
+        token=token,
+    )
+
+
+def submit_pr_review(
+    pr_number: int,
+    decision: str,
+    summary: str,
+    comments: Optional[List[Dict[str, Any]]] = None,
+    max_rounds: int = MAX_AUTO_REVIEW_ROUNDS,
+    repo: Optional[str] = None,
+    token: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Submit a PR review (`approve`, `request-changes`, or `comment`) and sync PR/Issue labels."""
+    normalized_decision = decision.strip().lower()
+    if normalized_decision not in ("approve", "request-changes", "comment"):
+        raise ValueError(f"Unsupported review decision '{decision}'. Use 'approve', 'request-changes', or 'comment'.")
+
+    target_repo = repo or detect_repo_slug()
+    auth_token = token or get_github_reviewer_token()
+    pr = github_request("GET", f"/pulls/{pr_number}", repo=target_repo, token=auth_token)
+    bundle = _fetch_pr_review_bundle(pr, repo=target_repo, token=auth_token)
+    analysis = bundle["analysis"]
+    head_sha = analysis["head_sha"]
+    issue_number = bundle["issue_number"]
+    next_round = analysis["auto_review_rounds"] + 1
+
+    if normalized_decision == "request-changes" and next_round > max_rounds:
+        reason = (
+            f"PR #{pr_number} reached {analysis['auto_review_rounds']} automated review rounds "
+            f"(limit={max_rounds}) and still requires changes:\n\n{summary.strip()}"
+        )
+        if issue_number is not None:
+            block_task_issue(issue_number, reason=reason, repo=target_repo, token=auth_token)
+        pr_labels = [lbl.get("name", "") for lbl in pr.get("labels", [])]
+        updated_pr_labels = _sync_labels_removing_review_state(pr_labels, target_status="agent:blocked")
+        _update_issue_or_pr_labels(pr_number, updated_pr_labels, repo=target_repo, token=auth_token)
+        github_request(
+            "POST",
+            f"/issues/{pr_number}/comments",
+            payload={
+                "body": (
+                    f"{_format_auto_review_marker(head_sha, 'blocked', next_round)}\n"
+                    f"## Automated Review Halted (`agent:blocked`)\n\n{reason}"
+                )
+            },
+            repo=target_repo,
+            token=auth_token,
+        )
+        return {
+            "pr_number": pr_number,
+            "issue_number": issue_number,
+            "decision": "blocked",
+            "round": next_round,
+            "blocked": True,
+        }
+
+    marker = _format_auto_review_marker(head_sha, normalized_decision, next_round)
+    heading_map = {
+        "approve": "## Automated Code Review: Approved",
+        "request-changes": "## Automated Code Review: Changes Requested",
+        "comment": "## Automated Code Review: Comment",
+    }
+    review_body = f"{marker}\n{heading_map[normalized_decision]}\n\n{summary.strip()}"
+    event_map = {
+        "approve": "APPROVE",
+        "request-changes": "REQUEST_CHANGES",
+        "comment": "COMMENT",
+    }
+
+    inline_comments: List[Dict[str, Any]] = []
+    for item in comments or []:
+        path = str(item.get("path") or "").strip()
+        body_txt = str(item.get("body") or "").strip()
+        line_val = item.get("line")
+        if path and body_txt and line_val is not None:
+            inline_comments.append({
+                "path": path,
+                "line": int(line_val),
+                "side": "RIGHT",
+                "body": body_txt,
+            })
+
+    def _post_review(event_name: str, body_text: str, c_list: List[Dict[str, Any]]) -> dict:
+        payload: Dict[str, Any] = {
+            "commit_id": head_sha,
+            "body": body_text,
+            "event": event_name,
+        }
+        if c_list:
+            payload["comments"] = c_list
+        return github_request(
+            "POST",
+            f"/pulls/{pr_number}/reviews",
+            payload=payload,
+            repo=target_repo,
+            token=auth_token,
+        )
+
+    fallback_used = False
+    try:
+        review_resp = _post_review(event_map[normalized_decision], review_body, inline_comments)
+    except RuntimeError as exc:
+        if "HTTP 422" not in str(exc):
+            raise
+        fallback_used = True
+        try:
+            review_resp = _post_review("COMMENT", review_body, inline_comments)
+        except RuntimeError as exc2:
+            if "HTTP 422" not in str(exc2) or not inline_comments:
+                raise
+            notes = "\n".join(
+                f"- `{c['path']}` (line {c['line']}): {c['body']}"
+                for c in inline_comments
+            )
+            review_resp = _post_review("COMMENT", f"{review_body}\n\n### File Comments\n{notes}", [])
+
+    pr_labels = [lbl.get("name", "") for lbl in pr.get("labels", [])]
+    if normalized_decision == "approve":
+        new_pr_labels = _sync_labels_removing_review_state(pr_labels, target_status="agent:review")
+        new_pr_labels.append("review:approved")
+    elif normalized_decision == "request-changes":
+        new_pr_labels = _sync_labels_removing_review_state(pr_labels, target_status="agent:changes-requested")
+        new_pr_labels.append("review:changes-requested")
+    else:
+        new_pr_labels = pr_labels
+
+    if normalized_decision in ("approve", "request-changes"):
+        _update_issue_or_pr_labels(pr_number, new_pr_labels, repo=target_repo, token=auth_token)
+        if issue_number is not None and bundle["linked_issue"] is not None:
+            issue_labels = [lbl.get("name", "") for lbl in bundle["linked_issue"].get("labels", [])]
+            if "agent:blocked" not in issue_labels:
+                target_issue_status = (
+                    "agent:changes-requested" if normalized_decision == "request-changes" else "agent:review"
+                )
+                updated_issue_labels = _sync_labels_removing_review_state(
+                    issue_labels, target_status=target_issue_status
+                )
+                _update_issue_or_pr_labels(
+                    issue_number, updated_issue_labels, repo=target_repo, token=auth_token
+                )
+
+    return {
+        "pr_number": pr_number,
+        "issue_number": issue_number,
+        "head_sha": head_sha,
+        "decision": normalized_decision,
+        "round": next_round,
+        "fallback_comment_review": fallback_used,
+        "review_url": (review_resp or {}).get("html_url"),
+        "blocked": False,
+    }
+
+
+def get_next_rework_pr(
+    domain: Optional[str] = None,
+    repo: Optional[str] = None,
+    token: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Return the highest-priority open `agent/...` PR needing rework from human or automated review."""
+    target_repo = repo or detect_repo_slug()
+    auth_token = token or get_github_token()
+    pulls = _get_paginated_pulls(state="open", base="main", repo=target_repo, token=auth_token)
+    domain_label = (
+        domain if (not domain or domain.startswith("domain:")) else f"domain:{domain}"
+    )
+
+    candidates: List[Tuple[Tuple[int, int], Dict[str, Any]]] = []
+    for pr in pulls:
+        head_ref = str((pr.get("head") or {}).get("ref") or "").strip()
+        if not head_ref.startswith("agent/"):
+            continue
+        bundle = _fetch_pr_review_bundle(pr, repo=target_repo, token=auth_token)
+        if not bundle["analysis"]["needs_rework"]:
+            continue
+
+        linked_issue = bundle["linked_issue"]
+        if domain_label and linked_issue:
+            issue_lbls = {l.get("name", "") for l in linked_issue.get("labels", [])}
+            if domain_label not in issue_lbls:
+                continue
+
+        issue_number = bundle["issue_number"]
+        if issue_number is not None:
+            task = get_task_issue(issue_number, repo=target_repo, token=auth_token)
+        else:
+            task = {
+                "number": bundle["pr_number"],
+                "title": pr.get("title"),
+                "state": pr.get("state"),
+                "html_url": pr.get("html_url"),
+                "labels": [l.get("name", "") for l in pr.get("labels", [])],
+                "spec": None,
+                "spec_error": "No linked issue found for PR.",
+                "body": pr.get("body", ""),
+            }
+
+        rank = _issue_priority_rank(linked_issue) if linked_issue else (99, bundle["pr_number"])
+        task["mode"] = "rework"
+        task["branch"] = head_ref
+        task["pr_number"] = bundle["pr_number"]
+        task["pr_url"] = pr.get("html_url")
+        task["head_sha"] = bundle["analysis"]["head_sha"]
+        task["auto_review_rounds"] = bundle["analysis"]["auto_review_rounds"]
+        task["rework_reasons"] = bundle["analysis"]["rework_reasons"]
+        task["review_feedback"] = bundle["analysis"]["feedback_items"]
+        candidates.append((rank, task))
+
+    if not candidates:
+        return None
+    candidates.sort(key=lambda pair: pair[0])
+    return candidates[0][1]
+
+
 def complete_task_issue(
     issue_number: int,
     summary: str = "",
@@ -1210,6 +1911,7 @@ def complete_task_issue(
     screenshots: Optional[List[Dict[str, str]]] = None,
     changes_summary: Optional[str] = None,
     update_pr: bool = False,
+    force_with_lease: bool = False,
     repo: Optional[str] = None,
     token: Optional[str] = None,
 ) -> dict:
@@ -1219,14 +1921,18 @@ def complete_task_issue(
         head_branch = validate_agent_branch(pr or f"agent/issue-{issue_number}")
 
     if push:
-        push_task_branch(head_branch, base_branch=base_branch)
+        push_task_branch(
+            head_branch,
+            base_branch=base_branch,
+            force_with_lease=force_with_lease,
+        )
 
     target_repo = repo or detect_repo_slug()
     auth_token = token or get_github_token()
 
     issue = github_request("GET", f"/issues/{issue_number}", repo=target_repo, token=auth_token)
     current_labels = [lbl.get("name", "") for lbl in issue.get("labels", [])]
-    new_labels = _replace_status_label(current_labels, "agent:review")
+    new_labels = _sync_labels_removing_review_state(current_labels, target_status="agent:review")
 
     patch_payload: Dict[str, Any] = {"labels": new_labels}
     if close:
@@ -1258,6 +1964,26 @@ def complete_task_issue(
         )
         pr_info = pr_res["pull_request"]
         updated["pull_request"] = pr_info
+        pr_num = int(pr_info["number"])
+        pr_labels = [lbl.get("name", "") for lbl in pr_info.get("labels", [])]
+        cleaned_pr_labels = _sync_labels_removing_review_state(pr_labels, target_status="agent:review")
+        if set(cleaned_pr_labels) != set(pr_labels):
+            _update_issue_or_pr_labels(pr_num, cleaned_pr_labels, repo=target_repo, token=auth_token)
+        if pr_res.get("deduplicated"):
+            pr_head_sha = str((pr_info.get("head") or {}).get("sha") or "").strip()
+            note = summary.strip() or "Pushed updated changes and verification results."
+            github_request(
+                "POST",
+                f"/issues/{pr_num}/comments",
+                payload={
+                    "body": (
+                        f"<!-- auto-executor:complete sha={pr_head_sha} -->\n"
+                        f"Pushed updated changes and verification results.\n\n{note}"
+                    )
+                },
+                repo=target_repo,
+                token=auth_token,
+            )
 
     comment_parts = ["Verification passed and task implementation is ready for review."]
     if pr:
@@ -1355,7 +2081,7 @@ def _build_parser() -> argparse.ArgumentParser:
     list_p = subparsers.add_parser("list", help="List backlog issues sorted by priority")
     list_p.add_argument(
         "--status",
-        choices=["proposed", "ready", "in-progress", "review", "blocked", "all"],
+        choices=["proposed", "ready", "in-progress", "review", "changes-requested", "blocked", "all"],
         default="ready",
     )
     list_p.add_argument("--domain", default=None)
@@ -1367,12 +2093,17 @@ def _build_parser() -> argparse.ArgumentParser:
     get_p.add_argument("issue_number", type=int)
     get_p.add_argument("--json", action="store_true")
 
-    next_p = subparsers.add_parser("next", help="Fetch the highest-priority approved (agent:ready) task")
+    next_p = subparsers.add_parser("next", help="Fetch the highest-priority rework PR or approved (agent:ready) task")
     next_p.add_argument("--domain", default=None)
     next_p.add_argument("--claim", action="store_true")
     next_p.add_argument("--agent", default="autonomous-executor")
     next_p.add_argument("--checkout", action="store_true")
-    next_p.add_argument("--worktree", action="store_true", help="Create an isolated git worktree from origin/main")
+    next_p.add_argument("--worktree", action="store_true", help="Create an isolated git worktree from origin/main (or rework PR branch)")
+    next_p.add_argument(
+        "--include-rework",
+        action="store_true",
+        help="Prioritize open PRs with requested changes (human or automated) before new agent:ready issues",
+    )
     next_p.add_argument(
         "--reclaim-stale-hours",
         type=float,
@@ -1404,9 +2135,29 @@ def _build_parser() -> argparse.ArgumentParser:
     complete_p.add_argument("--push", action="store_true", help="Safely push the validated agent/... branch to origin before completing")
     complete_p.add_argument("--open-pr", action="store_true", help="Open or reuse a GitHub Pull Request for the task branch")
     complete_p.add_argument("--update-pr", action="store_true", help="Update an existing open PR body with the latest summary/screenshots")
+    complete_p.add_argument("--force-with-lease", action="store_true", help="Use --force-with-lease when pushing a rebased agent/... rework branch")
     complete_p.add_argument("--base", default="main", help="Base branch for the pull request")
     complete_p.add_argument("--close", action="store_true")
     complete_p.add_argument("--cwd", dest="sub_cwd", default=None, help="Optional working directory (e.g. git worktree)")
+
+    rq_p = subparsers.add_parser("review-queue", help="List open agent/... PRs whose latest commit awaits automated review")
+    rq_p.add_argument("--max-rounds", type=int, default=MAX_AUTO_REVIEW_ROUNDS)
+    rq_p.add_argument("--json", action="store_true")
+
+    pr_wt_p = subparsers.add_parser("pr-worktree", help="Create an isolated git worktree for reviewing a Pull Request branch")
+    pr_wt_p.add_argument("pr_number", type=int)
+    pr_wt_p.add_argument("--base", default="main", help="Base branch to compare against (default: main)")
+    pr_wt_p.add_argument("--path", default=None, help="Optional worktree directory path")
+    pr_wt_p.add_argument("--json", action="store_true")
+
+    sr_p = subparsers.add_parser("submit-review", help="Submit an automated code review on a GitHub Pull Request")
+    sr_p.add_argument("pr_number", type=int)
+    sr_p.add_argument("--decision", choices=["approve", "request-changes", "comment"], required=True)
+    sr_p.add_argument("--summary", required=True)
+    sr_p.add_argument("--comment", action="append", default=[], help="Inline review comment formatted as path:line:message")
+    sr_p.add_argument("--comments-json", default=None, help="Optional path to JSON list of {path, line, body} comments")
+    sr_p.add_argument("--max-rounds", type=int, default=MAX_AUTO_REVIEW_ROUNDS)
+    sr_p.add_argument("--json", action="store_true")
 
     wt_p = subparsers.add_parser("worktree", help="Create an isolated git worktree on an agent/... branch from latest origin/main")
     wt_p.add_argument("--branch", required=True, help="Target agent/... branch name")
@@ -1497,30 +2248,40 @@ def main(argv: Optional[List[str]] = None) -> int:
         task = get_next_ready_issue(
             domain=args.domain,
             reclaim_stale_hours=args.reclaim_stale_hours,
+            include_rework=args.include_rework,
             repo=args.repo,
         )
         if task is None:
             if args.json:
                 print("null")
             else:
-                print("No approved (agent:ready) issues queued.")
+                print("No approved (agent:ready) or rework tasks queued.")
             return 0
+        is_rework = task.get("mode") == "rework"
         if args.worktree:
-            task["worktree_path"] = prepare_task_worktree(task["branch"])
-        elif args.checkout:
+            if is_rework:
+                wt_info = prepare_rework_worktree(task["branch"])
+                task["worktree_path"] = wt_info["worktree_path"]
+                task["rebased"] = wt_info["rebased"]
+                task["rebase_conflict"] = wt_info["rebase_conflict"]
+            else:
+                task["worktree_path"] = prepare_task_worktree(task["branch"])
+        elif args.checkout and not is_rework:
             prepare_task_branch(task["branch"])
-        if args.claim:
+        if args.claim and task.get("spec_error") != "No linked issue found for PR.":
             claim_task_issue(
                 int(task["number"]),
                 agent_name=args.agent,
                 branch=task["branch"],
+                force=is_rework,
                 repo=args.repo,
             )
             task["labels"] = _replace_status_label(task["labels"], "agent:in-progress")
         if args.json:
             print(json.dumps(task, indent=2))
         else:
-            print(f"Next ready task: #{task['number']} {task['title']} (branch: {task['branch']})")
+            label = "Next rework PR" if is_rework else "Next ready task"
+            print(f"{label}: #{task['number']} {task['title']} (branch: {task['branch']})")
             if task.get("worktree_path"):
                 print(f"Isolated worktree prepared at: {task['worktree_path']}")
         return 0
@@ -1562,12 +2323,75 @@ def main(argv: Optional[List[str]] = None) -> int:
             verification=args.verification,
             screenshots=_parse_screenshot_args(args.screenshot) or None,
             update_pr=args.update_pr,
+            force_with_lease=args.force_with_lease,
             repo=args.repo,
         )
         state_str = "closed" if args.close else "agent:review"
         pr_url = (updated.get("pull_request") or {}).get("html_url")
         pr_suffix = f" | PR: {pr_url}" if pr_url else ""
         print(f"Completed #{updated['number']} -> {state_str} ({updated['html_url']}){pr_suffix}")
+        return 0
+
+    if args.command == "review-queue":
+        queue = list_prs_to_review(repo=args.repo, max_rounds=args.max_rounds)
+        if args.json:
+            print(json.dumps(queue, indent=2))
+        else:
+            print(f"Found {len(queue)} PR(s) awaiting code review:")
+            for item in queue:
+                print(f"  PR #{item['pr_number']} [{item['head_branch']}] {item['title']} ({item['html_url']})")
+        return 0
+
+    if args.command == "pr-worktree":
+        pr_obj = github_request("GET", f"/pulls/{args.pr_number}", repo=args.repo, token=get_github_reviewer_token())
+        head_branch = str((pr_obj.get("head") or {}).get("ref") or "").strip()
+        wt_info = prepare_pr_review_worktree(
+            head_branch=head_branch,
+            worktree_path=args.path,
+            base_branch=args.base,
+        )
+        wt_info["pr_number"] = args.pr_number
+        wt_info["issue_number"] = extract_issue_number_from_pr(pr_obj)
+        if args.json:
+            print(json.dumps(wt_info, indent=2))
+        else:
+            print(
+                f"Prepared review worktree for PR #{args.pr_number} ({head_branch}) at {wt_info['worktree_path']} "
+                f"(behind_main={wt_info['behind_main']})"
+            )
+        return 0
+
+    if args.command == "submit-review":
+        parsed_comments: List[Dict[str, Any]] = []
+        if args.comments_json:
+            with open(args.comments_json, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+                if isinstance(loaded, list):
+                    parsed_comments.extend(loaded)
+        for raw in args.comment:
+            parts = raw.split(":", 2)
+            if len(parts) != 3 or not parts[1].strip().isdigit():
+                raise ValueError(f"Expected --comment as 'path:line:message', got '{raw}'.")
+            parsed_comments.append({
+                "path": parts[0].strip(),
+                "line": int(parts[1].strip()),
+                "body": parts[2].strip(),
+            })
+        res = submit_pr_review(
+            pr_number=args.pr_number,
+            decision=args.decision,
+            summary=args.summary,
+            comments=parsed_comments or None,
+            max_rounds=args.max_rounds,
+            repo=args.repo,
+        )
+        if args.json:
+            print(json.dumps(res, indent=2))
+        else:
+            print(
+                f"Submitted {res['decision']} review on PR #{res['pr_number']} "
+                f"(round {res['round']}, blocked={res['blocked']})"
+            )
         return 0
 
     if args.command == "worktree":

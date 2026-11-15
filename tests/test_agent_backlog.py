@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import os
 import subprocess
 from pathlib import Path
@@ -170,3 +171,238 @@ def test_temporary_agent_worktree_cleans_up_worktree_and_branch(tmp_path: Path) 
     assert not os.path.exists(wt_path)
     branches = _git(local_dir, "branch", "--list", "agent/audit-main")
     assert branches == ""
+
+
+def test_extract_issue_number_from_pr() -> None:
+    assert agent_backlog.extract_issue_number_from_pr({"head": {"ref": "agent/issue-14"}, "body": ""}) == 14
+    assert agent_backlog.extract_issue_number_from_pr({"head": {"ref": "agent/custom"}, "body": "Fixes #22"}) == 22
+    assert agent_backlog.extract_issue_number_from_pr({"head": {"ref": "agent/custom"}, "body": "No link"}) is None
+
+
+def test_analyze_pr_review_state_lifecycle() -> None:
+    t1 = datetime(2026, 11, 15, 10, 0, tzinfo=timezone.utc)
+    pr = {
+        "number": 5,
+        "head": {"ref": "agent/issue-4", "sha": "sha1"},
+        "labels": [{"name": "agent:review"}],
+    }
+    # 1. Fresh PR awaiting review
+    state1 = agent_backlog.analyze_pr_review_state(pr, [], [], [], latest_commit_at=t1)
+    assert state1["needs_auto_review"] is True
+    assert state1["needs_rework"] is False
+
+    # 2. Auto-reviewer requests changes (via COMMENT fallback + label)
+    rev1 = {
+        "id": 1,
+        "user": {"login": "bot"},
+        "state": "COMMENTED",
+        "commit_id": "sha1",
+        "submitted_at": "2026-11-15T10:05:00Z",
+        "body": "<!-- auto-review:sha=sha1 verdict=changes-requested round=1 -->\nPlease add edge case test.",
+    }
+    pr_changes = {**pr, "labels": [{"name": "agent:changes-requested"}, {"name": "review:changes-requested"}]}
+    state2 = agent_backlog.analyze_pr_review_state(pr_changes, [rev1], [], [], latest_commit_at=t1)
+    assert state2["needs_rework"] is True
+    assert state2["needs_auto_review"] is False
+    assert state2["auto_review_rounds"] == 1
+    assert len(state2["feedback_items"]) == 1
+
+    # 3. Executor pushes sha2, clears labels, posts completion marker -> awaits re-review
+    t2 = datetime(2026, 11, 15, 10, 15, tzinfo=timezone.utc)
+    pr_sha2 = {**pr, "head": {"ref": "agent/issue-4", "sha": "sha2"}, "labels": [{"name": "agent:review"}]}
+    exec_comment = {
+        "user": {"login": "bot"},
+        "created_at": "2026-11-15T10:15:30Z",
+        "body": "<!-- auto-executor:complete sha=sha2 -->\nAdded edge case test.",
+    }
+    state3 = agent_backlog.analyze_pr_review_state(pr_sha2, [rev1], [], [exec_comment], latest_commit_at=t2)
+    assert state3["needs_rework"] is False
+    assert state3["needs_auto_review"] is True
+
+    # 4. Auto-reviewer approves sha2; later human leaves inline comment -> triggers rework
+    rev2 = {
+        "id": 2,
+        "user": {"login": "bot"},
+        "state": "COMMENTED",
+        "commit_id": "sha2",
+        "submitted_at": "2026-11-15T10:20:00Z",
+        "body": "<!-- auto-review:sha=sha2 verdict=approved round=2 -->\nLooks good.",
+    }
+    pr_approved = {**pr_sha2, "labels": [{"name": "agent:review"}, {"name": "review:approved"}]}
+    state4 = agent_backlog.analyze_pr_review_state(pr_approved, [rev1, rev2], [], [exec_comment], latest_commit_at=t2)
+    assert state4["needs_rework"] is False
+    assert state4["needs_auto_review"] is False
+
+    human_inline = {
+        "user": {"login": "Justin"},
+        "path": "site_ui/helpers.js",
+        "line": 42,
+        "created_at": "2026-11-15T11:00:00Z",
+        "body": "Handle negative values here too.",
+    }
+    state5 = agent_backlog.analyze_pr_review_state(
+        pr_approved, [rev1, rev2], [human_inline], [exec_comment], latest_commit_at=t2
+    )
+    assert state5["needs_rework"] is True
+    assert any(item.get("path") == "site_ui/helpers.js" for item in state5["feedback_items"])
+
+    # 5. Native GitHub CHANGES_REQUESTED review vs later APPROVED review
+    native_rc = {
+        "id": 3,
+        "user": {"login": "reviewer-bot"},
+        "state": "CHANGES_REQUESTED",
+        "commit_id": "sha2",
+        "submitted_at": "2026-11-15T10:25:00Z",
+        "body": "Fix naming.",
+    }
+    state6 = agent_backlog.analyze_pr_review_state(pr_sha2, [native_rc], [], [], latest_commit_at=t2)
+    assert state6["needs_rework"] is True
+
+    native_app = {
+        "id": 4,
+        "user": {"login": "reviewer-bot"},
+        "state": "APPROVED",
+        "commit_id": "sha2",
+        "submitted_at": "2026-11-15T10:30:00Z",
+        "body": "<!-- auto-review:sha=sha2 verdict=approved round=2 -->\nLGTM",
+    }
+    state7 = agent_backlog.analyze_pr_review_state(pr_sha2, [native_rc, native_app], [], [], latest_commit_at=t2)
+    assert state7["needs_rework"] is False
+
+
+def test_submit_pr_review_handles_422_fallback_and_max_rounds(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = []
+    pr_obj = {
+        "number": 9,
+        "head": {"ref": "agent/issue-8", "sha": "abc123"},
+        "labels": [{"name": "agent:review"}],
+    }
+    issue_obj = {"number": 8, "labels": [{"name": "agent:review"}]}
+
+    def fake_request(method: str, path: str, payload=None, repo=None, token=None):
+        calls.append((method, path, payload))
+        if method == "GET" and path == "/pulls/9":
+            return pr_obj
+        if method == "GET" and path == "/pulls/9/reviews":
+            return []
+        if method == "GET" and path == "/pulls/9/comments":
+            return []
+        if method == "GET" and path == "/issues/9/comments":
+            return []
+        if method == "GET" and path == "/commits/abc123":
+            return {"commit": {"committer": {"date": "2026-11-15T10:00:00Z"}}}
+        if method == "GET" and path == "/issues/8":
+            return issue_obj
+        if method == "POST" and path == "/pulls/9/reviews":
+            if payload.get("event") == "APPROVE":
+                raise RuntimeError("GitHub API POST failed with HTTP 422: Can not approve your own pull request")
+            return {"html_url": "https://github.com/example/pr/9#pullrequestreview-1"}
+        if method == "PATCH":
+            return {"labels": [{"name": lbl} for lbl in payload.get("labels", [])]}
+        return {}
+
+    monkeypatch.setattr(agent_backlog, "github_request", fake_request)
+    res = agent_backlog.submit_pr_review(
+        pr_number=9,
+        decision="approve",
+        summary="All checks pass.",
+        repo="example/repo",
+        token="tok",
+    )
+    assert res["fallback_comment_review"] is True
+    assert res["decision"] == "approve"
+    assert res["round"] == 1
+    patch_calls = [c for c in calls if c[0] == "PATCH"]
+    assert any("review:approved" in c[2]["labels"] for c in patch_calls if c[1] == "/issues/9")
+
+    # Exceeding max_rounds on request-changes should mark agent:blocked
+    def fake_request_max_rounds(method: str, path: str, payload=None, repo=None, token=None):
+        if method == "GET" and path == "/pulls/9/reviews":
+            return [
+                {"body": "<!-- auto-review:sha=s1 verdict=changes-requested round=1 -->"},
+                {"body": "<!-- auto-review:sha=s2 verdict=changes-requested round=2 -->"},
+                {"body": "<!-- auto-review:sha=s3 verdict=changes-requested round=3 -->"},
+            ]
+        return fake_request(method, path, payload=payload, repo=repo, token=token)
+
+    monkeypatch.setattr(agent_backlog, "github_request", fake_request_max_rounds)
+    blocked_res = agent_backlog.submit_pr_review(
+        pr_number=9,
+        decision="request-changes",
+        summary="Still broken.",
+        max_rounds=3,
+        repo="example/repo",
+        token="tok",
+    )
+    assert blocked_res["blocked"] is True
+    assert blocked_res["decision"] == "blocked"
+
+
+def test_pr_review_and_rework_worktree_rebase(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    origin_dir = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "--bare", "--initial-branch=main", str(origin_dir)], check=True, capture_output=True)
+
+    seed_dir = tmp_path / "seed"
+    subprocess.run(["git", "clone", str(origin_dir), str(seed_dir)], check=True, capture_output=True)
+    _git(seed_dir, "config", "user.email", "test@example.com")
+    _git(seed_dir, "config", "user.name", "Test User")
+    (seed_dir / "README.md").write_text("v1\n", encoding="utf-8")
+    _git(seed_dir, "add", "README.md")
+    _git(seed_dir, "commit", "-m", "v1")
+    _git(seed_dir, "push", "-u", "origin", "main")
+
+    local_dir = tmp_path / "local"
+    subprocess.run(["git", "clone", str(origin_dir), str(local_dir)], check=True, capture_output=True)
+    _git(local_dir, "config", "user.email", "test@example.com")
+    _git(local_dir, "config", "user.name", "Test User")
+
+    # Push agent/issue-7 branch from v1
+    _git(seed_dir, "checkout", "-b", "agent/issue-7")
+    (seed_dir / "feature.txt").write_text("feature v1\n", encoding="utf-8")
+    _git(seed_dir, "add", "feature.txt")
+    _git(seed_dir, "commit", "-m", "feature v1")
+    _git(seed_dir, "push", "-u", "origin", "agent/issue-7")
+    b1 = _git(seed_dir, "rev-parse", "HEAD")
+
+    # Advance main to v2 so agent/issue-7 is behind main
+    _git(seed_dir, "checkout", "main")
+    (seed_dir / "README.md").write_text("v2\n", encoding="utf-8")
+    _git(seed_dir, "add", "README.md")
+    _git(seed_dir, "commit", "-m", "v2 on main")
+    _git(seed_dir, "push", "origin", "main")
+    c2 = _git(seed_dir, "rev-parse", "HEAD")
+
+    review_info = agent_backlog.prepare_pr_review_worktree("agent/issue-7", repo_root=str(local_dir))
+    try:
+        assert review_info["behind_main"] is True
+        assert review_info["head_sha"] == b1
+    finally:
+        agent_backlog.cleanup_task_worktree(
+            review_info["worktree_path"],
+            delete_branch=review_info["branch"],
+            repo_root=str(local_dir),
+        )
+
+    rework_info = agent_backlog.prepare_rework_worktree("agent/issue-7", repo_root=str(local_dir))
+    try:
+        assert rework_info["rebased"] is True
+        assert rework_info["rebase_conflict"] is False
+        wt = Path(rework_info["worktree_path"])
+        assert (wt / "README.md").read_text(encoding="utf-8") == "v2\n"
+        assert (wt / "feature.txt").read_text(encoding="utf-8") == "feature v1\n"
+        # origin/main (c2) is now an ancestor of HEAD
+        subprocess.run(
+            ["git", "merge-base", "--is-ancestor", c2, "HEAD"],
+            cwd=str(wt),
+            check=True,
+        )
+        monkeypatch.chdir(wt)
+        pushed = agent_backlog.push_task_branch("agent/issue-7", force_with_lease=True)
+        assert pushed == "agent/issue-7"
+    finally:
+        monkeypatch.chdir(tmp_path)
+        agent_backlog.cleanup_task_worktree(
+            rework_info["worktree_path"],
+            delete_branch="agent/issue-7",
+            repo_root=str(local_dir),
+        )
