@@ -1015,6 +1015,74 @@ body.dark-mode .val-score-pill.val-neutral {
     margin-top: 14px;
 }
 
+.val-efficiency-strip {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.val-eff-pill {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.val-eff-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #64748b;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.val-eff-value {
+    font-size: 1.15rem;
+    font-weight: 800;
+    color: #0f172a;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+}
+
+.val-eff-sub {
+    font-size: 0.72rem;
+    color: #6b7280;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+body.dark-mode .val-eff-pill {
+    background: #18181b;
+    border-color: #374151;
+}
+
+body.dark-mode .val-eff-label {
+    color: #9ca3af;
+}
+
+body.dark-mode .val-eff-value {
+    color: #f3f4f6;
+}
+
+body.dark-mode .val-eff-sub {
+    color: #9ca3af;
+}
+
+@media (max-width: 480px) {
+    .val-efficiency-strip {
+        grid-template-columns: 1fr;
+    }
+}
+
 .val-player-info-icon {
     font-size: 0.72rem;
     margin-left: 4px;
