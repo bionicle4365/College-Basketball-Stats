@@ -78,9 +78,39 @@ const tooltip = sandbox.getValTooltip(stats, labels);
 assert(tooltip.includes('TOTAL: 53'));
 const parsedLegacy = sandbox.parseLegacyBreakdownText(tooltip);
 assert.strictEqual(parsedLegacy.total, 53);
+
+// 2b. calculateAdvancedEfficiency & renderValBreakdownHtml efficiency strip
+const eff = sandbox.calculateAdvancedEfficiency(stats, labels);
+// eFG% = (8 + 0.5 * 3) / 14 = 9.5 / 14 = 67.9%
+assert.strictEqual(eff.efgPct, 67.9);
+assert.strictEqual(eff.efgDisplay, '67.9%');
+// TS% = 23 / (2 * (14 + 0.44 * 5)) = 23 / 32.4 = 71.0%
+assert.strictEqual(eff.tsPct, 71.0);
+assert.strictEqual(eff.tsDisplay, '71.0%');
+// AST/TO = 5 / 2 = 2.5
+assert.strictEqual(eff.astToRatio, 2.5);
+assert.strictEqual(eff.astToDisplay, '2.5');
+
+const zeroStats = ['10', '0-0', '0-0', '0-0', '0', '1', '1', '3', '0', '0', '0', '1', '0'];
+const zeroEff = sandbox.calculateAdvancedEfficiency(zeroStats, labels);
+assert.strictEqual(zeroEff.efgPct, null);
+assert.strictEqual(zeroEff.tsPct, null);
+assert.strictEqual(zeroEff.astToRatio, null);
+assert.strictEqual(zeroEff.efgDisplay, 'N/A');
+assert.strictEqual(zeroEff.tsDisplay, 'N/A');
+assert.strictEqual(zeroEff.astToDisplay, '3.0');
+
 const html = sandbox.renderValBreakdownHtml(details, 'DJ Horne', 'NC State #152');
 assert(html.includes('DJ Horne'));
 assert(html.includes('+53'));
+assert(html.includes('67.9%'));
+assert(html.includes('71.0%'));
+assert(html.includes('2.5'));
+
+const zeroDetails = sandbox.getValDetails(zeroStats, labels);
+const zeroHtml = sandbox.renderValBreakdownHtml(zeroDetails, 'Bench Player', 'NC State #152');
+assert(zeroHtml.includes('N/A'));
+assert(zeroHtml.includes('3.0'));
 
 // 3. League / Collection / Logo / Rank helpers
 assert.strictEqual(sandbox.getSportPath('mens'), 'mens-college-basketball');
