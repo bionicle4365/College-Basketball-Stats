@@ -226,6 +226,60 @@ function parseLegacyBreakdownText(text) {
     };
 }
 
+function calculateAdvancedEfficiency(stats, labels) {
+    let pts = 0;
+    let fg = { m: 0, a: 0 };
+    let threePt = { m: 0, a: 0 };
+    let ft = { m: 0, a: 0 };
+    let ast = 0;
+    let tov = 0;
+
+    if (stats && !Array.isArray(stats) && typeof stats === 'object') {
+        pts = Number(stats.pts) || 0;
+        fg = { m: Number(stats.fg?.m) || 0, a: Number(stats.fg?.a) || 0 };
+        threePt = { m: Number(stats.threePt?.m) || 0, a: Number(stats.threePt?.a) || 0 };
+        ft = { m: Number(stats.ft?.m) || 0, a: Number(stats.ft?.a) || 0 };
+        ast = Number(stats.ast) || 0;
+        tov = Number(stats.tov) || 0;
+    } else if (Array.isArray(stats) && Array.isArray(labels)) {
+        const details = getValDetails(stats, labels);
+        if (details) {
+            pts = details.pts;
+            fg = details.fg;
+            threePt = details.threePt;
+            ft = details.ft;
+            ast = details.ast;
+            tov = details.tov;
+        }
+    }
+
+    const efgPct = fg.a > 0 ? Math.round(((fg.m + 0.5 * threePt.m) / fg.a) * 1000) / 10 : null;
+    const tsDenominator = 2 * (fg.a + 0.44 * ft.a);
+    const tsPct = tsDenominator > 0 ? Math.round((pts / tsDenominator) * 1000) / 10 : null;
+    const astToRatio = tov > 0 ? Math.round((ast / tov) * 100) / 100 : null;
+
+    const efgDisplay = efgPct !== null ? `${efgPct.toFixed(1)}%` : 'N/A';
+    const tsDisplay = tsPct !== null ? `${tsPct.toFixed(1)}%` : 'N/A';
+    const astToDisplay = tov > 0 ? `${(ast / tov).toFixed(1)}` : (ast > 0 ? `${ast}.0` : '0.0');
+
+    return {
+        efgPct,
+        tsPct,
+        astToRatio,
+        efgDisplay,
+        tsDisplay,
+        astToDisplay,
+        fgm: fg.m,
+        fga: fg.a,
+        threePm: threePt.m,
+        ftm: ft.m,
+        fta: ft.a,
+        pts,
+        ast,
+        tov
+    };
+}
+
 function renderValBreakdownHtml(details, playerName, teamInfo) {
     if (!details) return '';
     const { pts, fg, threePt, ft, reb, ast, stl, blk, tov, total } = details;
@@ -233,6 +287,7 @@ function renderValBreakdownHtml(details, playerName, teamInfo) {
     const netShooting = pts + threePt.m - fg.a + (fg.m * 2) - ft.a + ft.m;
     const fgPct = fg.a > 0 ? Math.round((fg.m / fg.a) * 100) : 0;
     const ftPct = ft.a > 0 ? Math.round((ft.m / ft.a) * 100) : 0;
+    const advEff = calculateAdvancedEfficiency(details);
 
     const cardItems = [
         {
@@ -322,8 +377,6 @@ function renderValBreakdownHtml(details, playerName, teamInfo) {
     const scorePillClass = getValTierClass(total);
     const scorePillSign = total > 0 ? '+' : '';
 
-    const mathString = `VAL = ${pts} (PTS) + ${threePt.m} (3PM) - ${fg.a} (FGA) + ${fg.m * 2} (2×FGM) - ${ft.a} (FTA) + ${ft.m} (FTM) + ${reb} (REB) + ${ast * 2} (2×AST) + ${stl * 4} (4×STL) + ${blk * 4} (4×BLK) - ${tov * 2} (2×TO) = ${total}`;
-
     return `
         <div class="val-formula-header">
             <div>
@@ -340,8 +393,23 @@ function renderValBreakdownHtml(details, playerName, teamInfo) {
             Live efficiency and performance breakdown for <strong>${escapeHtml(playerName || 'player')}</strong> based on ESPN Standard Fantasy VAL scoring.
         </p>
 
-        <div class="val-formula-math-box">
-            <code>${escapeHtml(mathString)}</code>
+        <div class="val-section-title">Advanced Shooting &amp; Playmaking Efficiency</div>
+        <div class="val-efficiency-strip">
+            <div class="val-eff-pill">
+                <span class="val-eff-label">Effective FG% (eFG%)</span>
+                <span class="val-eff-value">${escapeHtml(advEff.efgDisplay)}</span>
+                <span class="val-eff-sub">${fg.m}/${fg.a} FG · ${threePt.m} 3PM</span>
+            </div>
+            <div class="val-eff-pill">
+                <span class="val-eff-label">True Shooting (TS%)</span>
+                <span class="val-eff-value">${escapeHtml(advEff.tsDisplay)}</span>
+                <span class="val-eff-sub">${pts} PTS · ${fg.a} FGA · ${ft.a} FTA</span>
+            </div>
+            <div class="val-eff-pill">
+                <span class="val-eff-label">Assist / Turnover (AST/TO)</span>
+                <span class="val-eff-value">${escapeHtml(advEff.astToDisplay)}</span>
+                <span class="val-eff-sub">${ast} AST · ${tov} TO</span>
+            </div>
         </div>
 
         <div class="val-section-title">Point Contribution Breakdown</div>
