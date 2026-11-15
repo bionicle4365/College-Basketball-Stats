@@ -499,6 +499,278 @@ async function fetchAllTeams(league) {
     return [];
 }
 
+function extractCompetitorScore(competitor) {
+    if (!competitor || typeof competitor !== 'object') return null;
+
+    if (competitor.score !== null && competitor.score !== undefined) {
+        if (typeof competitor.score === 'object') {
+            const raw = competitor.score.displayValue ?? competitor.score.value;
+            if (raw !== null && raw !== undefined && String(raw).trim() !== '' && !isNaN(Number(raw))) {
+                return String(Math.round(Number(raw)));
+            }
+        } else if (typeof competitor.score === 'string' || typeof competitor.score === 'number') {
+            const trimmed = String(competitor.score).trim();
+            if (trimmed !== '' && !isNaN(Number(trimmed))) {
+                return String(Math.round(Number(trimmed)));
+            }
+        }
+    }
+
+    if (Array.isArray(competitor.linescores) && competitor.linescores.length > 0) {
+        let sum = 0;
+        let hasPeriodScore = false;
+        competitor.linescores.forEach(ls => {
+            const rawVal = ls?.value ?? ls?.displayValue;
+            if (rawVal !== null && rawVal !== undefined && String(rawVal).trim() !== '' && !isNaN(Number(rawVal))) {
+                sum += Number(rawVal);
+                hasPeriodScore = true;
+            }
+        });
+        if (hasPeriodScore) {
+            return String(Math.round(sum));
+        }
+    }
+
+    return null;
+}
+
+function isGameInLiveWindow(gameDateStr, nowMs) {
+    if (!gameDateStr) return false;
+    const targetTime = new Date(gameDateStr).getTime();
+    if (isNaN(targetTime)) return false;
+    const refNow = typeof nowMs === 'number' ? nowMs : Date.now();
+    const elapsed = refNow - targetTime;
+    return elapsed >= 0 && elapsed < 4 * 60 * 60 * 1000;
+}
+
+function resolveScheduleGameStatus(event, summary, teamId) {
+    const tIdStr = String(teamId || getFavoriteTeamId());
+    const schedGame = event?.competitions?.[0] || event || {};
+    const summaryGame = summary?.header?.competitions?.[0] || null;
+
+    const summaryStatusType = summaryGame?.status?.type || summary?.header?.status?.type || null;
+    const schedStatusType = schedGame?.status?.type || event?.status?.type || null;
+
+    let activeStatusType = schedStatusType || summaryStatusType || {};
+    if (summaryStatusType && summaryStatusType.state) {
+        if (
+            summaryStatusType.state === 'post' ||
+            summaryStatusType.state === 'in' ||
+            !schedStatusType?.state ||
+            schedStatusType.state === 'pre'
+        ) {
+            activeStatusType = summaryStatusType;
+        }
+    }
+
+    const state = activeStatusType.state || 'pre';
+    const completed = Boolean(activeStatusType.completed || state === 'post');
+    const detail = activeStatusType.detail || '';
+    const shortDetail = activeStatusType.shortDetail || detail || '';
+
+    const findTeams = (comp) => {
+        const comps = comp?.competitors;
+        if (!Array.isArray(comps) || comps.length === 0) return { myTeam: null, opponent: null };
+        const myTeam = comps.find(c => String(c?.team?.id ?? c?.id) === tIdStr) || null;
+        const opponent = comps.find(c => String(c?.team?.id ?? c?.id) !== tIdStr) || null;
+        return { myTeam, opponent };
+    };
+
+    const { myTeam: sumMy, opponent: sumOpp } = findTeams(summaryGame);
+    const { myTeam: schedMy, opponent: schedOpp } = findTeams(schedGame);
+
+    const candidates = [];
+
+    if (sumMy && sumOpp) {
+        const sMy = extractCompetitorScore({ score: sumMy.score });
+        const sOpp = extractCompetitorScore({ score: sumOpp.score });
+        if (sMy !== null && sOpp !== null) {
+            candidates.push({ myScore: sMy, oppScore: sOpp, source: 'summary_header' });
+        }
+        const lMy = extractCompetitorScore({ linescores: sumMy.linescores });
+        const lOpp = extractCompetitorScore({ linescores: sumOpp.linescores });
+        if (lMy !== null && lOpp !== null) {
+            candidates.push({ myScore: lMy, oppScore: lOpp, source: 'summary_linescores' });
+        }
+    }
+
+    if (Array.isArray(summary?.plays) && summary.plays.length > 0) {
+        for (let i = summary.plays.length - 1; i >= 0; i--) {
+            const p = summary.plays[i];
+            if (p && p.homeScore !== undefined && p.awayScore !== undefined && p.homeScore !== null && p.awayScore !== null) {
+                const homeAway = sumMy?.homeAway || schedMy?.homeAway;
+                if (homeAway === 'home' || homeAway === 'away') {
+                    const isHome = homeAway === 'home';
+                    const pMy = String(Math.round(Number(isHome ? p.homeScore : p.awayScore)));
+                    const pOpp = String(Math.round(Number(isHome ? p.awayScore : p.homeScore)));
+                    if (!isNaN(Number(pMy)) && !isNaN(Number(pOpp))) {
+                        candidates.push({ myScore: pMy, oppScore: pOpp, source: 'summary_plays' });
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    if (Array.isArray(summary?.boxscore?.players) && summary.boxscore.players.length >= 2) {
+        const myBox = summary.boxscore.players.find(p => String(p?.team?.id) === tIdStr);
+        const oppBox = summary.boxscore.players.find(p => String(p?.team?.id) !== tIdStr);
+        const sumBoxPts = (teamBox) => {
+            const statGroup = teamBox?.statistics?.[0];
+            if (!statGroup || !Array.isArray(statGroup.names)) return null;
+            const ptsIdx = statGroup.names.indexOf('PTS');
+            if (ptsIdx === -1) return null;
+            if (Array.isArray(statGroup.totals) && statGroup.totals[ptsIdx] !== undefined && statGroup.totals[ptsIdx] !== '') {
+                const tot = parseInt(statGroup.totals[ptsIdx], 10);
+                if (!isNaN(tot)) return String(tot);
+            }
+            if (!Array.isArray(statGroup.athletes) || statGroup.athletes.length === 0) return null;
+            let totalPts = 0;
+            let hasStats = false;
+            statGroup.athletes.forEach(a => {
+                if (a && Array.isArray(a.stats) && a.stats[ptsIdx] !== undefined && !a.didNotPlay) {
+                    const v = parseInt(a.stats[ptsIdx], 10);
+                    if (!isNaN(v)) {
+                        totalPts += v;
+                        hasStats = true;
+                    }
+                }
+            });
+            return hasStats ? String(totalPts) : null;
+        };
+        if (myBox && oppBox) {
+            const bMy = sumBoxPts(myBox);
+            const bOpp = sumBoxPts(oppBox);
+            if (bMy !== null && bOpp !== null) {
+                candidates.push({ myScore: bMy, oppScore: bOpp, source: 'summary_boxscore' });
+            }
+        }
+    }
+
+    if (schedMy && schedOpp) {
+        const eMy = extractCompetitorScore(schedMy);
+        const eOpp = extractCompetitorScore(schedOpp);
+        if (eMy !== null && eOpp !== null) {
+            candidates.push({ myScore: eMy, oppScore: eOpp, source: 'schedule' });
+        }
+    }
+
+    let chosen = candidates.find(c => Number(c.myScore) > 0 || Number(c.oppScore) > 0) || null;
+    if (!chosen) {
+        if (state === 'post') {
+            chosen = candidates[0] || null;
+        } else if (state === 'in') {
+            chosen = candidates.find(c => c.source.startsWith('summary_')) || null;
+        }
+    }
+
+    const myScore = chosen ? chosen.myScore : null;
+    const oppScore = chosen ? chosen.oppScore : null;
+
+    let isWin = Boolean(sumMy?.winner ?? schedMy?.winner);
+    if (state === 'post' && sumMy?.winner === undefined && schedMy?.winner === undefined && myScore !== null && oppScore !== null) {
+        if (Number(myScore) !== Number(oppScore)) {
+            isWin = Number(myScore) > Number(oppScore);
+        }
+    }
+
+    return {
+        state,
+        completed,
+        detail,
+        shortDetail,
+        myScore,
+        oppScore,
+        isWin,
+        scoreSource: chosen ? chosen.source : null
+    };
+}
+
+function formatScheduleGameResultHtml(event, summary, teamId) {
+    const schedGame = event?.competitions?.[0] || event || {};
+    const resolved = resolveScheduleGameStatus(event, summary, teamId);
+
+    if (resolved.state === 'post') {
+        const hasScores = resolved.myScore !== null && resolved.oppScore !== null && resolved.myScore !== '' && resolved.oppScore !== '';
+        const score = hasScores ? `${escapeHtml(resolved.myScore)}-${escapeHtml(resolved.oppScore)}` : '';
+        let otInfo = '';
+        if (resolved.shortDetail && resolved.shortDetail.includes('/')) {
+            otInfo = ` <span style="font-size:0.85em; color:#666;">(${escapeHtml(resolved.shortDetail.split('/')[1])})</span>`;
+        }
+        return `<span class="${resolved.isWin ? 'win' : 'loss'}">${resolved.isWin ? 'W' : 'L'}</span>${score ? ' ' + score : ''}${otInfo}`;
+    }
+
+    if (resolved.state === 'in') {
+        const detail = escapeHtml(resolved.shortDetail || resolved.detail || 'LIVE');
+        const hasScores = resolved.myScore !== null && resolved.oppScore !== null && resolved.myScore !== '' && resolved.oppScore !== '';
+        const scorePart = hasScores ? ` ${escapeHtml(resolved.myScore)}-${escapeHtml(resolved.oppScore)}` : '';
+        return `<span class="badge-live" style="background:#cc0000; color:white; padding:2px 6px; border-radius:3px; font-size:0.75rem; font-weight:bold; margin-right:4px;">LIVE</span>${scorePart} <span style="font-size:0.85em; color:#666;">(${detail})</span>`;
+    }
+
+    const rawDate = event?.date || schedGame?.date;
+    const date = rawDate ? new Date(rawDate) : null;
+    if (date && !isNaN(date.getTime())) {
+        return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    }
+    return escapeHtml(resolved.detail || 'TBD');
+}
+
+async function hydrateLiveScheduleEvents(events, sportPath, teamId) {
+    if (!Array.isArray(events) || events.length === 0 || typeof fetch !== 'function') {
+        return events;
+    }
+    const sPath = sportPath || getSportPath();
+    const tId = String(teamId || getFavoriteTeamId());
+
+    const liveCandidates = events.filter(ev => {
+        const comp = ev?.competitions?.[0];
+        if (!comp) return false;
+        const state = comp.status?.type?.state || ev.status?.type?.state;
+        if (state === 'in') return true;
+        if (state === 'pre' && isGameInLiveWindow(ev.date || comp.date)) return true;
+        return false;
+    });
+
+    if (liveCandidates.length === 0) return events;
+
+    await Promise.all(liveCandidates.map(async (ev) => {
+        const comp = ev.competitions?.[0];
+        const gameId = comp?.id || ev.id;
+        if (!gameId) return;
+        try {
+            const summaryUrl = `https://site.api.espn.com/apis/site/v2/sports/basketball/${encodeURIComponent(sPath)}/summary?event=${encodeURIComponent(gameId)}`;
+            const res = await fetch(summaryUrl);
+            if (!res || !res.ok) return;
+            const summary = await res.json();
+            if (!summary) return;
+            ev._liveSummary = summary;
+            const resolved = resolveScheduleGameStatus(ev, summary, tId);
+            if (comp.status && summary.header?.competitions?.[0]?.status) {
+                comp.status = summary.header.competitions[0].status;
+            }
+            if (Array.isArray(comp.competitors)) {
+                comp.competitors.forEach(c => {
+                    const isMyTeam = String(c?.team?.id ?? c?.id) === tId;
+                    const resolvedScore = isMyTeam ? resolved.myScore : resolved.oppScore;
+                    if (resolvedScore !== null && resolvedScore !== undefined) {
+                        c.score = {
+                            value: Number(resolvedScore) || 0,
+                            displayValue: String(resolvedScore)
+                        };
+                    }
+                    if (resolved.state === 'post' && isMyTeam) {
+                        c.winner = Boolean(resolved.isWin);
+                    }
+                });
+            }
+        } catch (err) {
+            console.warn(`Failed to hydrate live schedule event ${gameId}:`, err);
+        }
+    }));
+
+    return events;
+}
+
 async function fetchTeamSchedule(sportPath, teamId) {
     const sPath = sportPath || getSportPath();
     const tId = teamId || getFavoriteTeamId();
@@ -526,7 +798,8 @@ async function fetchTeamSchedule(sportPath, teamId) {
                     const regData = await regResponse.json();
                     const regEvents = regData.events || [];
                     if (events.length === 0) {
-                        return regData;
+                        data = regData;
+                        events = data?.events || [];
                     } else if (regEvents.length > 0) {
                         const eventIds = new Set(events.map(e => String(e.id)));
                         regEvents.forEach(e => {
@@ -537,12 +810,14 @@ async function fetchTeamSchedule(sportPath, teamId) {
                         });
                         events.sort((a, b) => new Date(a.date) - new Date(b.date));
                         data.events = events;
-                        return data;
                     }
                 }
             } catch (regErr) {
                 console.warn('Error fetching regular season schedule fallback:', regErr);
             }
+        }
+        if (data && Array.isArray(data.events) && data.events.length > 0) {
+            await hydrateLiveScheduleEvents(data.events, sPath, tId);
         }
         return data || { events: [] };
     } catch (e) {

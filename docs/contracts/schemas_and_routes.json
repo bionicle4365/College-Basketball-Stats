@@ -35,7 +35,7 @@
     {
       "id": "summary",
       "url_pattern": "https://site.api.espn.com/apis/site/v2/sports/basketball/{sportPath}/summary",
-      "used_in": ["site_ui/scoreboard/index.html", "site_ui/schedule/index.html", "site_ui/group/index.html"]
+      "used_in": ["site_ui/scoreboard/index.html", "site_ui/schedule/index.html", "site_ui/group/index.html", "site_ui/helpers.js"]
     },
     {
       "id": "standings",
@@ -107,6 +107,11 @@
     "getAppContext",
     "getTeamLogoHtml",
     "fetchAllTeams",
+    "extractCompetitorScore",
+    "isGameInLiveWindow",
+    "resolveScheduleGameStatus",
+    "formatScheduleGameResultHtml",
+    "hydrateLiveScheduleEvents",
     "fetchTeamSchedule",
     "fetchTeamRoster",
     "getValTierClass",
