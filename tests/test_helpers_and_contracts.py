@@ -162,6 +162,92 @@ assert.strictEqual(quadSum[1].w, 1);
 assert.strictEqual(quadSum[2].rem, 1);
 const sosSum = sandbox.calculateScheduleSosSummary(events, '152', bpiMap);
 assert.strictEqual(sosSum.avgOppRank, 50);
+
+// 5. Live schedule game score resolution (Issue #4: prevent 0-0 while in-game)
+assert.strictEqual(sandbox.extractCompetitorScore({{ score: '68' }}), '68');
+assert.strictEqual(sandbox.extractCompetitorScore({{ score: {{ value: 72, displayValue: '72' }} }}), '72');
+assert.strictEqual(sandbox.extractCompetitorScore({{ score: {{}} }}), null);
+assert.strictEqual(sandbox.extractCompetitorScore({{ linescores: [{{ value: 31 }}, {{ displayValue: '37' }}] }}), '68');
+
+const nowMs = Date.parse('2026-11-15T20:00:00Z');
+assert.strictEqual(sandbox.isGameInLiveWindow('2026-11-15T19:00:00Z', nowMs), true);
+assert.strictEqual(sandbox.isGameInLiveWindow('2026-11-15T21:00:00Z', nowMs), false);
+assert.strictEqual(sandbox.isGameInLiveWindow('2026-11-15T10:00:00Z', nowMs), false);
+
+// ESPN /teams/{id}/schedule omits competitor.score (or leaves it 0-0) while state === 'in'
+const liveSchedEventNoScores = {{
+  id: '401638645',
+  date: '2026-11-15T19:00:00Z',
+  competitions: [{{
+    id: '401638645',
+    status: {{ type: {{ state: 'in', completed: false, detail: '8:44 - 2nd Half', shortDetail: '8:44 - 2nd' }} }},
+    competitors: [
+      {{ id: '152', homeAway: 'home', team: {{ id: '152' }} }},
+      {{ id: '153', homeAway: 'away', team: {{ id: '153' }} }}
+    ]
+  }}]
+}};
+
+// Without summary, raw schedule event with missing scores must not fabricate '0-0'
+const unhydratedHtml = sandbox.formatScheduleGameResultHtml(liveSchedEventNoScores, null, '152');
+assert(unhydratedHtml.includes('LIVE'));
+assert(!unhydratedHtml.includes('0-0'));
+
+// With summary from /summary?event=..., live scores 68-64 are resolved and rendered
+const liveSummary = {{
+  header: {{
+    competitions: [{{
+      id: '401638645',
+      status: {{ type: {{ state: 'in', completed: false, detail: '8:44 - 2nd Half', shortDetail: '8:44 - 2nd' }} }},
+      competitors: [
+        {{ id: '152', homeAway: 'home', score: '68', team: {{ id: '152' }} }},
+        {{ id: '153', homeAway: 'away', score: '64', team: {{ id: '153' }} }}
+      ]
+    }}]
+  }}
+}};
+const hydratedStatus = sandbox.resolveScheduleGameStatus(liveSchedEventNoScores, liveSummary, '152');
+assert.strictEqual(hydratedStatus.state, 'in');
+assert.strictEqual(hydratedStatus.myScore, '68');
+assert.strictEqual(hydratedStatus.oppScore, '64');
+const hydratedHtml = sandbox.formatScheduleGameResultHtml(liveSchedEventNoScores, liveSummary, '152');
+assert(hydratedHtml.includes('LIVE'));
+assert(hydratedHtml.includes('68-64'));
+assert(hydratedHtml.includes('8:44 - 2nd'));
+
+// Fallback when summary header has 0-0 but plays / boxscore have live scores
+const headerZeroSummaryWithPlays = {{
+  header: {{
+    competitions: [{{
+      id: '401638645',
+      status: {{ type: {{ state: 'in', completed: false, shortDetail: '18:10 - 1st' }} }},
+      competitors: [
+        {{ id: '152', homeAway: 'home', score: '0', team: {{ id: '152' }} }},
+        {{ id: '153', homeAway: 'away', score: '0', team: {{ id: '153' }} }}
+      ]
+    }}]
+  }},
+  plays: [
+    {{ homeScore: 7, awayScore: 4, text: 'Jumper made' }}
+  ]
+}};
+const playFallback = sandbox.resolveScheduleGameStatus(liveSchedEventNoScores, headerZeroSummaryWithPlays, '152');
+assert.strictEqual(playFallback.myScore, '7');
+assert.strictEqual(playFallback.oppScore, '4');
+assert.strictEqual(playFallback.scoreSource, 'summary_plays');
+
+// Test hydrateLiveScheduleEvents with mocked fetch
+sandbox.fetch = async (url) => ({{
+  ok: true,
+  json: async () => liveSummary
+}});
+const schedClone = JSON.parse(JSON.stringify([liveSchedEventNoScores]));
+sandbox.hydrateLiveScheduleEvents(schedClone, 'mens-college-basketball', '152').then((res) => {{
+  const c0 = res[0].competitions[0].competitors.find(c => c.id === '152');
+  const c1 = res[0].competitions[0].competitors.find(c => c.id === '153');
+  assert.strictEqual(c0.score.displayValue, '68');
+  assert.strictEqual(c1.score.displayValue, '64');
+}});
 """
     proc = subprocess.run(
         ["node", "-e", node_script],

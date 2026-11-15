@@ -14,6 +14,37 @@ permalink: /schedule/
         let USER_UID = (typeof auth !== 'undefined' && auth && auth.currentUser) ? auth.currentUser.uid : null;
         let playerMap = {};
         let allScheduleEvents = [];
+        let scheduleLivePollInterval = null;
+
+        function stopScheduleLivePolling() {
+            if (scheduleLivePollInterval) {
+                clearInterval(scheduleLivePollInterval);
+                scheduleLivePollInterval = null;
+            }
+        }
+
+        function syncScheduleLivePolling(events) {
+            const hasLiveGame = Array.isArray(events) && events.some(ev => {
+                const resolved = resolveScheduleGameStatus(ev, ev._liveSummary || null, TEAM_ID);
+                return resolved.state === 'in' || (resolved.state === 'pre' && isGameInLiveWindow(ev.date || ev.competitions?.[0]?.date));
+            });
+
+            if (hasLiveGame && !scheduleLivePollInterval) {
+                scheduleLivePollInterval = setInterval(() => {
+                    const liveEvents = allScheduleEvents.filter(ev => {
+                        const res = resolveScheduleGameStatus(ev, ev._liveSummary || null, TEAM_ID);
+                        return res.state === 'in' || (res.state === 'pre' && isGameInLiveWindow(ev.date || ev.competitions?.[0]?.date));
+                    });
+                    if (liveEvents.length > 0) {
+                        loadGameDetailsAndPicks(liveEvents, true);
+                    } else {
+                        stopScheduleLivePolling();
+                    }
+                }, 30000);
+            } else if (!hasLiveGame) {
+                stopScheduleLivePolling();
+            }
+        }
 
         function loadScheduleData() {
             // Fetch roster, schedule, and BPI quadrant map in parallel
@@ -68,26 +99,7 @@ permalink: /schedule/
                         ? ` <span class="quad-pill ${quadInfo.className}" title="${escapeHtml(quadInfo.tooltip)}">${quadInfo.label}</span>`
                         : '';
                     
-                    let result = escapeHtml(game.status?.type?.detail || '');
-                    
-                    if (game.status?.type?.state === 'post') {
-                        const isWin = myTeam.winner;
-                        const myScore = myTeam.score?.displayValue ?? myTeam.score ?? '';
-                        const oppScore = opponent?.score?.displayValue ?? opponent?.score ?? '';
-                        const score = (myScore && oppScore) ? `${myScore}-${oppScore}` : '';
-                        let otInfo = '';
-                        if (game.status?.type?.shortDetail && game.status.type.shortDetail.includes('/')) {
-                            otInfo = ` <span style="font-size:0.85em; color:#666;">(${escapeHtml(game.status.type.shortDetail.split('/')[1])})</span>`;
-                        }
-                        result = `<span class="${isWin ? 'win' : 'loss'}">${isWin ? 'W' : 'L'}</span> ${score}${otInfo}`;
-                    } else if (game.status?.type?.state === 'in') {
-                        const myScore = myTeam.score?.displayValue ?? myTeam.score ?? '0';
-                        const oppScore = opponent?.score?.displayValue ?? opponent?.score ?? '0';
-                        const detail = escapeHtml(game.status?.type?.shortDetail || game.status?.type?.detail || 'LIVE');
-                        result = `<span class="badge-live" style="background:#cc0000; color:white; padding:2px 6px; border-radius:3px; font-size:0.75rem; font-weight:bold; margin-right:4px;">LIVE</span> ${myScore}-${oppScore} <span style="font-size:0.85em; color:#666;">(${detail})</span>`;
-                    } else {
-                        result = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-                    }
+                    const result = formatScheduleGameResultHtml(event, event._liveSummary || null, TEAM_ID);
 
                     const logo = opponent ? getTeamLogoHtml(opponent.team) : '';
                     const oppName = escapeHtml(opponent?.team?.shortDisplayName || opponent?.team?.displayName || 'Opponent');
@@ -96,7 +108,7 @@ permalink: /schedule/
                     tableRowsHtml += `<tr class="schedule-game-row" data-game-id="${escapeHtml(game.id)}" style="cursor: pointer;">
                         <td>${dateStr}</td>
                         <td><span class="schedule-opp-cell">${vsAt} ${logo}<span>${oppName}</span>${quadPillHtml}</span></td>
-                        <td>${result}</td>
+                        <td id="result-${escapeHtml(game.id)}">${result}</td>
                         <td id="val-${escapeHtml(game.id)}" style="font-size: 0.9em; color: #666;">-</td>
                         <td id="pick-${escapeHtml(game.id)}" style="font-size: 0.9em; color: #666;">-</td>
                     </tr>`;
@@ -106,7 +118,7 @@ permalink: /schedule/
                     <div class="schedule-card schedule-game-row" data-game-id="${escapeHtml(game.id)}">
                         <div class="schedule-card-top">
                             <span class="schedule-card-date">${dateStr}</span>
-                            <span class="schedule-card-result">${result}</span>
+                            <span class="schedule-card-result" id="result-card-${escapeHtml(game.id)}">${result}</span>
                         </div>
                         <div class="schedule-card-matchup">
                             ${logo}
@@ -160,33 +172,62 @@ permalink: /schedule/
             });
         }
 
-        function loadGameDetailsAndPicks(events) {
+        function loadGameDetailsAndPicks(events, forceRefreshLive = false) {
             const userPicksByGame = {};
             const promises = events.map(event => {
                 const game = event.competitions?.[0];
                 if (!game) return Promise.resolve();
                 
-                const summaryPromise = (game.status?.type?.state === 'post') 
-                    ? fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${encodeURIComponent(SPORT_PATH)}/summary?event=${encodeURIComponent(game.id)}`).then(r => r.json()).catch(() => null)
-                    : Promise.resolve(null);
+                const initialState = game.status?.type?.state || event.status?.type?.state || 'pre';
+                const inLiveWindow = initialState === 'pre' && isGameInLiveWindow(event.date || game.date);
+                const shouldFetchSummary = initialState === 'post' || initialState === 'in' || inLiveWindow;
+
+                let summaryPromise = Promise.resolve(null);
+                if (shouldFetchSummary) {
+                    if (!forceRefreshLive && event._liveSummary) {
+                        summaryPromise = Promise.resolve(event._liveSummary);
+                    } else {
+                        summaryPromise = fetch(`https://site.api.espn.com/apis/site/v2/sports/basketball/${encodeURIComponent(SPORT_PATH)}/summary?event=${encodeURIComponent(game.id)}`)
+                            .then(r => r.ok ? r.json() : null)
+                            .then(summary => {
+                                if (summary) {
+                                    event._liveSummary = summary;
+                                }
+                                return summary;
+                            })
+                            .catch(() => event._liveSummary || null);
+                    }
+                }
                 const pickPromise = (USER_UID && typeof db !== 'undefined' && db) 
                     ? db.collection(COLLECTION_NAME).doc(String(event.id)).get().catch(() => null)
                     : Promise.resolve(null);
 
                 return Promise.all([summaryPromise, pickPromise]).then(([summary, pickDoc]) => {
+                    const resolved = resolveScheduleGameStatus(event, summary, TEAM_ID);
+                    const effectiveState = resolved.state;
+
+                    if (summary || effectiveState === 'in' || effectiveState === 'post') {
+                        const resultHtml = formatScheduleGameResultHtml(event, summary, TEAM_ID);
+                        const resultCell = document.getElementById(`result-${game.id}`);
+                        const resultCardCell = document.getElementById(`result-card-${game.id}`);
+                        if (resultCell) resultCell.innerHTML = resultHtml;
+                        if (resultCardCell) resultCardCell.innerHTML = resultHtml;
+                    }
+
                     let pickHandledByVal = false;
                     if (summary && summary.boxscore && summary.boxscore.players) {
                         const teamStats = summary.boxscore.players.find(p => String(p.team?.id) === String(TEAM_ID));
                         if (teamStats && teamStats.statistics && teamStats.statistics[0]) {
                             const statsData = teamStats.statistics[0];
                             const labels = statsData.names;
-                            const athletes = statsData.athletes;
+                            const athletes = statsData.athletes || [];
                             
                             let maxVal = -Infinity;
                             let topPlayer = null;
                             let topPlayerId = null;
 
                             athletes.forEach(player => {
+                                if (!player || !Array.isArray(player.stats) || player.stats.length === 0 || player.didNotPlay) return;
                                 const val = calculateVal(player.stats, labels);
                                 if (val > maxVal) {
                                     maxVal = val;
@@ -213,7 +254,7 @@ permalink: /schedule/
                                 const pickedPlayerId = pickDoc.data()[USER_UID];
                                 if (pickedPlayerId) {
                                     userPicksByGame[String(event.id)] = String(pickedPlayerId);
-                                    const player = athletes.find(p => p.athlete && String(p.athlete.id) === String(pickedPlayerId));
+                                    const player = athletes.find(p => p.athlete && String(p.athlete.id) === String(pickedPlayerId) && Array.isArray(p.stats) && p.stats.length > 0 && !p.didNotPlay);
                                     if (player) {
                                         const val = calculateVal(player.stats, labels);
                                         const pickCell = document.getElementById(`pick-${game.id}`);
@@ -248,7 +289,7 @@ permalink: /schedule/
 
                     // Handle Pick Name (for pre-game, live, or post-game where VAL was not calculated above)
                     if (!pickHandledByVal) {
-                        const isPreGame = game.status?.type?.state === 'pre' || !game.status?.type?.completed;
+                        const isPreGame = effectiveState === 'pre' && !resolved.completed;
                         const pickCell = document.getElementById(`pick-${game.id}`);
                         const pickCardCell = document.getElementById(`pick-card-${game.id}`);
                         const pickChip = document.getElementById(`pick-chip-${game.id}`);
@@ -259,7 +300,7 @@ permalink: /schedule/
                         if (pickedPlayerId) {
                             userPicksByGame[String(event.id)] = String(pickedPlayerId);
                             const playerName = playerMap[String(pickedPlayerId)] || playerMap[pickedPlayerId] || `Player #${pickedPlayerId}`;
-                            const valDisplay = (game.status?.type?.state === 'post') ? ' (0)' : '';
+                            const valDisplay = (effectiveState === 'post') ? ' (0)' : '';
                             const pickNameStr = isPreGame 
                                 ? `<span class="badge-pick-saved">✓ ${escapeHtml(playerName)}</span>`
                                 : `<strong>${escapeHtml(playerName)}</strong>${valDisplay}`;
@@ -286,7 +327,10 @@ permalink: /schedule/
             });
 
             Promise.all(promises).then(() => {
-                checkScheduleCooldownConflicts(events, userPicksByGame);
+                if (!forceRefreshLive) {
+                    checkScheduleCooldownConflicts(events, userPicksByGame);
+                }
+                syncScheduleLivePolling(allScheduleEvents);
             });
         }
 
@@ -339,5 +383,9 @@ permalink: /schedule/
             if (allScheduleEvents.length > 0 && USER_UID) {
                 loadGameDetailsAndPicks(allScheduleEvents);
             }
+        });
+
+        window.addEventListener('beforeunload', () => {
+            stopScheduleLivePolling();
         });
     </script>

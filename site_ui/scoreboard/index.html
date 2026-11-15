@@ -1215,7 +1215,8 @@ permalink: /scoreboard/
               const val = c.linescores?.[i]?.displayValue ?? c.linescores?.[i]?.value ?? '-';
               row += `<td>${val}</td>`;
           }
-          row += `<td class="col-total" style="font-weight:bold;">${c.score || 0}</td>`;
+          const totalScore = extractCompetitorScore(c) ?? '0';
+          row += `<td class="col-total" style="font-weight:bold;">${escapeHtml(totalScore)}</td>`;
           return `<tr>${row}</tr>`;
       };
 
@@ -1705,6 +1706,9 @@ permalink: /scoreboard/
 
     const display = document.getElementById('game-display');
     const gameDate = event.date || competition?.date;
+    const resolvedScoreInfo = resolveScheduleGameStatus(event, summaryData, awayTeam.team.id);
+    const awayScoreDisplay = resolvedScoreInfo.myScore ?? extractCompetitorScore(awayTeam) ?? '0';
+    const homeScoreDisplay = resolvedScoreInfo.oppScore ?? extractCompetitorScore(homeTeam) ?? '0';
     
     const isPre = state === 'pre';
     display.innerHTML = `
@@ -1714,14 +1718,14 @@ permalink: /scoreboard/
           ${getTeamLogoHtml(awayTeam.team)}
           <span class="team-name">${getRank(awayTeam)}${awayTeam.team.shortDisplayName || awayTeam.team.nickname || awayTeam.team.displayName}</span>
           <div class="team-record">${getRecord(awayTeam)}</div>
-          ${!isPre ? `<div class="team-score">${awayTeam.score || 0}</div>` : ''}
+          ${!isPre ? `<div class="team-score">${escapeHtml(awayScoreDisplay)}</div>` : ''}
         </div>
         <div class="vs">VS</div>
         <div class="team">
           ${getTeamLogoHtml(homeTeam.team)}
           <span class="team-name">${getRank(homeTeam)}${homeTeam.team.shortDisplayName || homeTeam.team.nickname || homeTeam.team.displayName}</span>
           <div class="team-record">${getRecord(homeTeam)}</div>
-          ${!isPre ? `<div class="team-score">${homeTeam.score || 0}</div>` : ''}
+          ${!isPre ? `<div class="team-score">${escapeHtml(homeScoreDisplay)}</div>` : ''}
         </div>
       </div>
       ${winProbHtml}
