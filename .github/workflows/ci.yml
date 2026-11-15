@@ -1,0 +1,70 @@
+name: PR CI
+
+on:
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Unit Tests & Static Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Python test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+
+      - name: Check JavaScript syntax, Python compilation, and JSON manifests
+        run: |
+          node --check site_ui/common.js
+          node --check site_ui/helpers.js
+          node --check site_ui/sw.js
+          python -m compileall -q scripts tests
+          python -m json.tool site_ui/manifest.json > /dev/null
+          python -m json.tool docs/contracts/schemas_and_routes.json > /dev/null
+
+      - name: Run pytest suite
+        run: python -m pytest -v
+
+  jekyll-build:
+    name: Jekyll Build Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Build with Jekyll
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./site_ui
+          destination: ./_site
+
+      - name: Verify built Jekyll output
+        run: |
+          test -f _site/index.html
+          test -f _site/groups/index.html
+          test -f _site/helpers.js
+          test -f _site/common.js
+          test -f _site/sw.js
+          test -f _site/manifest.json

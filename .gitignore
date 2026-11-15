@@ -1,4 +1,6 @@
 site_ui/_site/**
+site_ui/.jekyll-cache/**
+.jekyll-cache/**
 site_ui/common.local.js
 ./*.json
 .env
@@ -6,3 +8,9 @@ site_ui/common.local.js
 *.pem
 *.key
 *.p12
+scratch/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+node_modules/
+site_ui/node_modules/

@@ -1,0 +1,129 @@
+{
+  "app": {
+    "name": "College-Basketball-Stats",
+    "baseurl": "/College-Basketball-Stats",
+    "default_team_id": "152",
+    "supported_leagues": [
+      {
+        "id": "mens",
+        "sport_path": "mens-college-basketball",
+        "pick_collection_suffix": "m"
+      },
+      {
+        "id": "womens",
+        "sport_path": "womens-college-basketball",
+        "pick_collection_suffix": "w"
+      }
+    ]
+  },
+  "pages": [
+    { "permalink": "/", "source": "site_ui/index.html" },
+    { "permalink": "/login/", "source": "site_ui/login/index.html" },
+    { "permalink": "/scoreboard/", "source": "site_ui/scoreboard/index.html" },
+    { "permalink": "/schedule/", "source": "site_ui/schedule/index.html" },
+    { "permalink": "/roster/", "source": "site_ui/roster/index.html" },
+    { "permalink": "/standings/", "source": "site_ui/standings/index.html" },
+    { "permalink": "/groups/", "source": "site_ui/group/index.html" },
+    { "permalink": "/settings/", "source": "site_ui/settings/index.html" }
+  ],
+  "espn_endpoints": [
+    {
+      "id": "scoreboard",
+      "url_pattern": "https://site.api.espn.com/apis/site/v2/sports/basketball/{sportPath}/scoreboard",
+      "used_in": ["site_ui/scoreboard/index.html"]
+    },
+    {
+      "id": "summary",
+      "url_pattern": "https://site.api.espn.com/apis/site/v2/sports/basketball/{sportPath}/summary",
+      "used_in": ["site_ui/scoreboard/index.html", "site_ui/schedule/index.html", "site_ui/group/index.html"]
+    },
+    {
+      "id": "standings",
+      "url_pattern": "https://site.api.espn.com/apis/v2/sports/basketball/{sportPath}/standings",
+      "used_in": ["site_ui/standings/index.html", "site_ui/helpers.js"]
+    },
+    {
+      "id": "groups",
+      "url_pattern": "https://site.api.espn.com/apis/site/v2/sports/basketball/{sportPath}/groups",
+      "used_in": ["site_ui/helpers.js"]
+    },
+    {
+      "id": "team_schedule",
+      "url_pattern": "https://site.api.espn.com/apis/site/v2/sports/basketball/{sportPath}/teams/{teamId}/schedule",
+      "used_in": ["site_ui/helpers.js"]
+    },
+    {
+      "id": "team_roster",
+      "url_pattern": "https://site.api.espn.com/apis/site/v2/sports/basketball/{sportPath}/teams/{teamId}/roster",
+      "used_in": ["site_ui/helpers.js"]
+    },
+    {
+      "id": "team_statistics",
+      "url_pattern": "https://site.api.espn.com/apis/site/v2/sports/basketball/{sportPath}/teams/{teamId}/statistics",
+      "used_in": ["site_ui/helpers.js"]
+    },
+    {
+      "id": "powerindex",
+      "url_pattern": "https://site.api.espn.com/apis/fitt/v3/sports/basketball/{sportPath}/powerindex",
+      "fallback_url_pattern": "https://site.web.api.espn.com/apis/fitt/v3/sports/basketball/{sportPath}/powerindex",
+      "used_in": ["site_ui/helpers.js"]
+    }
+  ],
+  "firestore_collections": {
+    "user_settings": {
+      "path": "/user_settings/{userId}",
+      "allowed_write_fields": ["displayName", "favoriteTeamId"]
+    },
+    "groups": {
+      "path": "/groups/{groupId}",
+      "required_create_fields": ["name", "teamId", "league", "members", "isPrivate"],
+      "owner_update_fields": ["isPrivate", "passwordHash", "salt", "ownerId"],
+      "member_join_fields": ["members"],
+      "forbidden_fields": ["password"]
+    },
+    "team_game_picks": {
+      "path": "/{collectionName}/{gameId}",
+      "collection_regex": "^[0-9]+[mw]$",
+      "allowed_write_fields": ["{uid}", "{uid}_time"]
+    }
+  },
+  "helper_functions": [
+    "escapeHtml",
+    "sanitizeUrl",
+    "generateSalt",
+    "hashPassword",
+    "verifyPassword",
+    "checkAuth",
+    "calculateVal",
+    "getValTooltip",
+    "getValDetails",
+    "parseLegacyBreakdownText",
+    "renderValBreakdownHtml",
+    "getFavoriteTeamId",
+    "getLeague",
+    "getSportPath",
+    "getCollectionName",
+    "getAppContext",
+    "getTeamLogoHtml",
+    "fetchAllTeams",
+    "fetchTeamSchedule",
+    "fetchTeamRoster",
+    "getValTierClass",
+    "formatRankToken",
+    "fetchBpiAndResumeMap",
+    "calculateScheduleSosSummary",
+    "getGameQuadrant",
+    "calculateScheduleQuadSummary",
+    "fetchTeamSeasonStats"
+  ],
+  "service_worker": {
+    "source": "site_ui/sw.js",
+    "required_precached_assets": [
+      "/College-Basketball-Stats/",
+      "/College-Basketball-Stats/styles.css",
+      "/College-Basketball-Stats/helpers.js",
+      "/College-Basketball-Stats/common.js",
+      "/College-Basketball-Stats/manifest.json"
+    ]
+  }
+}

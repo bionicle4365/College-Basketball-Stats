@@ -1,0 +1,15 @@
+# Rules
+
+- **Firebase & CI Secrets Safety**: Never commit actual Firebase credentials into `site_ui/common.js` (keep `FIREBASE_*_PLACEHOLDER` tokens intact; use `site_ui/common.local.js` locally which is git-ignored). Never deploy Firestore security rules directly unless explicitly asked by the user.
+
+- **Task & Feature Planning**: When the user requests planning or adding a new feature/milestone without immediate execution, create a structured GitHub Issue via `python scripts/agent_backlog.py create ...` with `owned_paths`, `forbidden_paths`, `acceptance_criteria`, and `verification_commands`, and confirm the created issue URL with the user without executing code changes.
+
+- **Artifact & Worktree Storage**: Save temporary scripts, scratch data, and isolated git worktrees inside `scratch/` (e.g., `scratch/worktrees/`). Do not commit generated artifacts to the repository.
+
+- **Testing**: Run automated unit tests (`python -m pytest -v`) before completing any task. Any new pure helper function added to `site_ui/helpers.js` must be registered in `docs/contracts/schemas_and_routes.json` and covered by Node-backed unit tests in `tests/test_helpers_and_contracts.py`.
+
+- **Agentic Orchestration**: For complex workspace tasks, reference the `agentic-orchestrator` skill. Identify the appropriate specialized domains (`Site UI`, `ESPN & Analytics`, `Firestore & Groups`, `PWA`) required for the task, load their rules, and coordinate implementation sequentially (Single-Domain Plan -> Execute) or in parallel (Multi-Domain Swarm).
+
+- **GitHub Issues Task Queue & Completion**: Track all autonomous tasks and feature proposals as GitHub Issues via `scripts/agent_backlog.py` (`init`, `list`, `get`, `approve`, `next`, `claim`, `complete`, `block`). Newly generated/created issues start as `agent:proposed` and require human approval (`approve <issue_number>` or relabeling to `agent:ready` on GitHub) before an autonomous agent may claim them (`agent:ready` -> `agent:in-progress` -> `agent:review`, or `agent:blocked` via `block <issue_number> --reason "..."` when stuck). Use `next --claim --worktree` so work starts from fresh `origin/main` in an isolated worktree without disturbing local working trees. Before marking any task complete (`python scripts/agent_backlog.py complete <issue_number> --pr agent/issue-<issue_number> --push --open-pr --summary "..."`), run `python scripts/verify_task.py --issue <issue_number>` to validate branch isolation, file ownership boundaries, and required unit tests (`python -m pytest -v`).
+
+- **Branch & Pull Request Isolation**: Autonomous task executors must **never** commit directly to, push to, or merge into `main` (or `master`), and must never merge Pull Requests. All autonomous task work must happen on an isolated `agent/issue-<issue_number>` branch and be submitted as a Pull Request to `main` via `python scripts/agent_backlog.py complete <issue_number> --pr agent/issue-<issue_number> --push --open-pr --summary "..."` so the human reviewer performs the final merge.
