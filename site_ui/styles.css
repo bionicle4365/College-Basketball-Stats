@@ -3775,10 +3775,182 @@ body.dark-mode .standings-ap-rank {
     gap: 3px;
     min-width: 0;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
 body.dark-mode .standings-quad-card {
     background: #242427;
     border-color: #38383d;
+}
+.standings-quad-card-interactive {
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+}
+.standings-quad-card-interactive:hover {
+    border-color: #94a3b8;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.06);
+}
+body.dark-mode .standings-quad-card-interactive:hover {
+    border-color: #52525b;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+.standings-quad-card-interactive.active {
+    border-color: #2563eb;
+    outline: 2px solid #2563eb;
+    outline-offset: -1px;
+}
+body.dark-mode .standings-quad-card-interactive.active {
+    border-color: #3b82f6;
+    outline-color: #3b82f6;
+}
+.standings-quad-card-interactive:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 1px;
+}
+
+.standings-quad-rem-line {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    flex-wrap: wrap;
+}
+.standings-quad-toggle-hint {
+    font-weight: 600;
+    color: #2563eb;
+}
+body.dark-mode .standings-quad-toggle-hint {
+    color: #60a5fa;
+}
+
+.standings-quad-drilldowns {
+    width: 100%;
+}
+.standings-quad-drilldown {
+    margin-top: 10px;
+    border-radius: 8px;
+    border: 1px solid #cbd5e1;
+    padding: 10px 12px;
+    background: rgba(37, 99, 235, 0.04);
+}
+body.dark-mode .standings-quad-drilldown {
+    border-color: #38383d;
+    background: rgba(59, 130, 246, 0.08);
+}
+.standings-quad-drilldown-header {
+    font-size: 0.76rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #1e293b;
+    margin-bottom: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+body.dark-mode .standings-quad-drilldown-header {
+    color: #e2e8f0;
+}
+.standings-quad-drilldown-cutoff {
+    font-weight: 600;
+    color: #64748b;
+    text-transform: none;
+    letter-spacing: normal;
+}
+body.dark-mode .standings-quad-drilldown-cutoff {
+    color: #94a3b8;
+}
+.standings-quad-drilldown-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    font-size: 0.82rem;
+}
+.quad-drilldown-game-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: rgba(148, 163, 184, 0.14);
+    border: 1px solid rgba(148, 163, 184, 0.25);
+    min-width: 0;
+}
+body.dark-mode .quad-drilldown-game-item {
+    background: rgba(148, 163, 184, 0.12);
+    border-color: rgba(148, 163, 184, 0.22);
+}
+.quad-drilldown-game-item.quad-drilldown-game-win {
+    background: rgba(16, 185, 129, 0.12);
+    border-color: rgba(16, 185, 129, 0.28);
+}
+body.dark-mode .quad-drilldown-game-item.quad-drilldown-game-win {
+    background: rgba(16, 185, 129, 0.16);
+    border-color: rgba(16, 185, 129, 0.35);
+}
+.quad-drilldown-game-item.quad-drilldown-game-loss {
+    background: rgba(239, 68, 68, 0.11);
+    border-color: rgba(239, 68, 68, 0.26);
+}
+body.dark-mode .quad-drilldown-game-item.quad-drilldown-game-loss {
+    background: rgba(239, 68, 68, 0.16);
+    border-color: rgba(239, 68, 68, 0.35);
+}
+.quad-drilldown-game-opp {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #0f172a;
+}
+body.dark-mode .quad-drilldown-game-opp {
+    color: #f1f5f9;
+}
+.quad-drilldown-game-loc {
+    font-size: 0.75rem;
+    color: #64748b;
+}
+body.dark-mode .quad-drilldown-game-loc {
+    color: #94a3b8;
+}
+.quad-drilldown-game-result {
+    font-weight: 700;
+    white-space: nowrap;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+}
+.quad-drilldown-game-result.win {
+    color: #15803d;
+}
+body.dark-mode .quad-drilldown-game-result.win {
+    color: #4ade80;
+}
+.quad-drilldown-game-result.loss {
+    color: #b91c1c;
+}
+body.dark-mode .quad-drilldown-game-result.loss {
+    color: #f87171;
+}
+.quad-drilldown-game-status {
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: #475569;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+body.dark-mode .quad-drilldown-game-status {
+    color: #cbd5e1;
+}
+.quad-drilldown-empty {
+    grid-column: 1 / -1;
+    font-size: 0.8rem;
+    color: #64748b;
+    font-style: italic;
+    padding: 4px 2px;
+}
+body.dark-mode .quad-drilldown-empty {
+    color: #94a3b8;
 }
 
 .standings-quad-top {
@@ -3851,6 +4023,9 @@ body.dark-mode .standings-quad-cutoff {
     }
     .standings-quad-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .standings-quad-drilldown-list {
+        grid-template-columns: 1fr;
     }
     .standings-team-stats-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));

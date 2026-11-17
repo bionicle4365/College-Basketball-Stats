@@ -111,9 +111,23 @@ permalink: /standings/
             contentEl.innerHTML = html;
 
             contentEl.addEventListener('click', (e) => {
+                const quadCard = e.target.closest('.standings-quad-card[data-quad]');
+                if (quadCard && quadCard.dataset.teamId && quadCard.dataset.quad) {
+                    toggleQuadGamesDrilldown(quadCard.dataset.teamId, quadCard.dataset.quad);
+                    return;
+                }
                 const row = e.target.closest('.standings-team-row');
                 if (row && row.dataset.teamId) {
                     toggleTeamStandingsDrawer(row.dataset.teamId, row);
+                }
+            });
+
+            contentEl.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                const quadCard = e.target.closest('.standings-quad-card[data-quad]');
+                if (quadCard && quadCard.dataset.teamId && quadCard.dataset.quad) {
+                    e.preventDefault();
+                    toggleQuadGamesDrilldown(quadCard.dataset.teamId, quadCard.dataset.quad);
                 }
             });
         })
@@ -195,21 +209,74 @@ permalink: /standings/
                 4: 'H 161+ · N 201+ · A 241+'
             };
 
+            const formatQuadGameDate = (rawDate) => {
+                if (!rawDate) return '';
+                const d = new Date(rawDate);
+                if (isNaN(d.getTime())) return '';
+                return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            };
+
             const quadCardsHtml = [1, 2, 3, 4].map(q => {
-                const qData = quads[q] || { w: 0, l: 0, rem: 0, pct: null };
+                const qData = quads[q] || { w: 0, l: 0, rem: 0, pct: null, games: [] };
                 const pctStr = qData.pct !== null ? `${qData.pct}%` : '-';
                 const pctClass = qData.pct === null ? '' : (qData.pct >= 50 ? 'pill-sub-pos' : 'pill-sub-neg');
                 const remStr = qData.rem > 0 ? `${qData.rem} left` : '0 left';
+                const totalGames = (qData.games || []).length;
+                const actionHint = totalGames > 0 ? 'Tap to view ▸' : 'No games';
                 return `
-                    <div class="standings-quad-card">
+                    <div class="standings-quad-card standings-quad-card-interactive" data-team-id="${escapeHtml(teamId)}" data-quad="${q}" role="button" tabindex="0" aria-expanded="false" aria-controls="standings-quad-drilldown-${escapeHtml(teamId)}-${q}">
                         <div class="standings-quad-top">
                             <span class="quad-pill quad-pill-q${q}">Q${q}</span>
                             <span class="standings-quad-pct ${pctClass}">${pctStr}</span>
                         </div>
                         <div class="standings-quad-record">${qData.w}-${qData.l}</div>
                         <div class="standings-quad-meta">
-                            <span>${remStr}</span>
+                            <span class="standings-quad-rem-line"><span class="standings-quad-rem-count">${remStr}</span> · <span class="standings-quad-toggle-hint">${actionHint}</span></span>
                             <span class="standings-quad-cutoff" title="${escapeHtml(quadCutoffs[q])}">${escapeHtml(quadCutoffs[q])}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            const quadDrilldownsHtml = [1, 2, 3, 4].map(q => {
+                const qData = quads[q] || { w: 0, l: 0, rem: 0, pct: null, games: [] };
+                const games = Array.isArray(qData.games) ? qData.games : [];
+                const remLabel = qData.rem > 0 ? `, ${qData.rem} Remaining` : '';
+                const gamesItemsHtml = games.length > 0
+                    ? games.map(g => {
+                        const prefix = g.locationLabel === 'Away' ? '@' : 'vs';
+                        const rankBadge = g.oppRank ? `#${escapeHtml(g.oppRank)} ` : '';
+                        const oppText = `${prefix} ${rankBadge}${escapeHtml(g.opponentName || 'Opponent')}`;
+                        const locText = escapeHtml(g.locationLabel || '');
+                        let statusHtml = '';
+                        let itemClass = 'quad-drilldown-game-upcoming';
+                        if (g.completed) {
+                            const wl = g.winner ? 'W' : 'L';
+                            const scorePart = g.score ? ` ${escapeHtml(g.score)}` : '';
+                            itemClass = g.winner ? 'quad-drilldown-game-win' : 'quad-drilldown-game-loss';
+                            statusHtml = `<span class="quad-drilldown-game-result ${g.winner ? 'win' : 'loss'}">${wl}${scorePart}</span>`;
+                        } else {
+                            const datePart = formatQuadGameDate(g.date);
+                            const upLabel = datePart ? `Upcoming · ${escapeHtml(datePart)}` : (g.score ? `Live ${escapeHtml(g.score)}` : 'Upcoming');
+                            statusHtml = `<span class="quad-drilldown-game-status">${upLabel}</span>`;
+                        }
+                        return `
+                            <div class="quad-drilldown-game-item ${itemClass}" data-game-id="${escapeHtml(g.id || '')}">
+                                <span class="quad-drilldown-game-opp"><strong>${oppText}</strong> <span class="quad-drilldown-game-loc">(${locText})</span></span>
+                                ${statusHtml}
+                            </div>
+                        `;
+                    }).join('')
+                    : `<div class="quad-drilldown-empty">No Quadrant ${q} games on schedule.</div>`;
+
+                return `
+                    <div id="standings-quad-drilldown-${escapeHtml(teamId)}-${q}" class="standings-quad-drilldown" data-team-id="${escapeHtml(teamId)}" data-quad="${q}" style="display: none;">
+                        <div class="standings-quad-drilldown-header">
+                            <span>Quadrant ${q} Matchups (${qData.w}-${qData.l}${remLabel})</span>
+                            <span class="standings-quad-drilldown-cutoff">${escapeHtml(quadCutoffs[q])}</span>
+                        </div>
+                        <div class="standings-quad-drilldown-list">
+                            ${gamesItemsHtml}
                         </div>
                     </div>
                 `;
@@ -262,10 +329,13 @@ permalink: /standings/
                     <div>
                         <div class="roster-section-header" style="margin-bottom: 6px;">
                             <span class="roster-section-title">Quadrant Win-Loss Breakdown</span>
-                            <span class="roster-minilog-hint">via ${escapeHtml(rankSourceLabel)}</span>
+                            <span class="roster-minilog-hint">Tap a Quadrant card to inspect matchups · via ${escapeHtml(rankSourceLabel)}</span>
                         </div>
                         <div class="standings-quad-grid">
                             ${quadCardsHtml}
+                        </div>
+                        <div class="standings-quad-drilldowns">
+                            ${quadDrilldownsHtml}
                         </div>
                     </div>
 
@@ -342,6 +412,44 @@ permalink: /standings/
         } catch (err) {
             console.error(`Error loading drawer for team ${teamId}:`, err);
             contentEl.innerHTML = '<div class="error" style="padding: 10px;">Unable to load team details.</div>';
+        }
+    }
+
+    function toggleQuadGamesDrilldown(teamId, quadNum) {
+        const contentEl = document.getElementById(`standings-drawer-content-${teamId}`);
+        if (!contentEl) return;
+
+        const targetPanel = document.getElementById(`standings-quad-drilldown-${teamId}-${quadNum}`);
+        if (!targetPanel) return;
+
+        const isCurrentlyOpen = targetPanel.style.display !== 'none';
+        const allCards = contentEl.querySelectorAll('.standings-quad-card[data-quad]');
+        const allPanels = contentEl.querySelectorAll('.standings-quad-drilldown[data-quad]');
+
+        allPanels.forEach(panel => {
+            panel.style.display = 'none';
+        });
+
+        allCards.forEach(card => {
+            card.classList.remove('active');
+            card.setAttribute('aria-expanded', 'false');
+            const hint = card.querySelector('.standings-quad-toggle-hint');
+            if (hint && hint.textContent !== 'No games') {
+                hint.textContent = 'Tap to view ▸';
+            }
+        });
+
+        if (!isCurrentlyOpen) {
+            targetPanel.style.display = 'block';
+            const activeCard = contentEl.querySelector(`.standings-quad-card[data-quad="${quadNum}"]`);
+            if (activeCard) {
+                activeCard.classList.add('active');
+                activeCard.setAttribute('aria-expanded', 'true');
+                const hint = activeCard.querySelector('.standings-quad-toggle-hint');
+                if (hint && hint.textContent !== 'No games') {
+                    hint.textContent = 'Expanded ▾';
+                }
+            }
         }
     }
 </script>
