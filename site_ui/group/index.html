@@ -59,18 +59,22 @@ permalink: /groups/
     </div>
 
     <!-- Member Pick History Modal -->
-    <div id="member-picks-modal" class="modal-overlay" onclick="closeMemberModal(event)">
+    <div id="member-picks-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="member-picks-modal-title" onclick="closeMemberModal(event)">
         <div class="modal-box">
-            <span class="modal-close" onclick="closeMemberModal(event)">&times;</span>
-            <div id="member-picks-modal-body" class="modal-body"></div>
+            <span class="modal-close" role="button" tabindex="0" aria-label="Close modal" onclick="closeMemberModal(event)">&times;</span>
+            <div id="member-picks-modal-body" class="modal-body">
+                <h3 id="member-picks-modal-title" style="display:none;">Member Pick History</h3>
+            </div>
         </div>
     </div>
 
     <!-- Group Privacy Settings Modal (Owner Only) -->
-    <div id="group-privacy-modal" class="modal-overlay" onclick="closePrivacyModal(event)">
+    <div id="group-privacy-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="group-privacy-modal-title" onclick="closePrivacyModal(event)">
         <div class="modal-box" style="max-width: 480px; width: 92%; padding: 22px 24px;">
-            <span class="modal-close" onclick="closePrivacyModal(event)">&times;</span>
-            <div id="group-privacy-modal-body"></div>
+            <span class="modal-close" role="button" tabindex="0" aria-label="Close modal" onclick="closePrivacyModal(event)">&times;</span>
+            <div id="group-privacy-modal-body">
+                <h3 id="group-privacy-modal-title" style="display:none;">Group Privacy Settings</h3>
+            </div>
         </div>
     </div>
 
@@ -877,7 +881,7 @@ permalink: /groups/
 
             modalBody.innerHTML = `
                 <div style="border-bottom: 1px solid #eee; padding-bottom: 12px; margin-bottom: 15px;">
-                    <h3 style="margin: 0 0 5px 0; font-size: 1.2rem;">${escapeHtml(member.displayName)} ${youTag}</h3>
+                    <h3 id="member-picks-modal-title" style="margin: 0 0 5px 0; font-size: 1.2rem;">${escapeHtml(member.displayName)} ${youTag}</h3>
                     <div style="display: flex; gap: 15px; font-size: 0.85rem; color: #666; flex-wrap: wrap;">
                         <span>Total: <strong style="color: #cc0000;">${member.totalPoints} VAL</strong></span>
                         <span>Picks: <strong>${member.picksCount}</strong></span>
@@ -904,11 +908,16 @@ permalink: /groups/
             `;
 
             modal.style.display = 'flex';
+            if (modal.classList && typeof modal.classList.add === 'function') modal.classList.add('open');
         }
 
         function closeMemberModal(event) {
-            if (!event || event.target.id === 'member-picks-modal' || event.target.classList.contains('modal-close')) {
-                document.getElementById('member-picks-modal').style.display = 'none';
+            if (!event || event.target.id === 'member-picks-modal' || (event.target.classList && event.target.classList.contains('modal-close'))) {
+                const modal = document.getElementById('member-picks-modal');
+                if (modal) {
+                    modal.style.display = 'none';
+                    if (modal.classList && typeof modal.classList.remove === 'function') modal.classList.remove('open');
+                }
             }
         }
 
@@ -925,7 +934,7 @@ permalink: /groups/
                 // Change from Public to Private
                 body.innerHTML = `
                     <div style="margin-bottom: 16px;">
-                        <h3 style="margin: 0 0 6px 0; font-size: 1.25rem;">🔒 Change to Private Group</h3>
+                        <h3 id="group-privacy-modal-title" style="margin: 0 0 6px 0; font-size: 1.25rem;">🔒 Change to Private Group</h3>
                         <p style="color: #666; font-size: 0.88rem; line-height: 1.4; margin: 0;">
                             Make <strong>${escapeHtml(currentGroupData.name)}</strong> private so new members must enter a password to join. Existing members remain in the group.
                         </p>
@@ -958,7 +967,7 @@ permalink: /groups/
                 // Group is already Private
                 body.innerHTML = `
                     <div style="margin-bottom: 16px;">
-                        <h3 style="margin: 0 0 6px 0; font-size: 1.25rem;">⚙️ Group Privacy Settings</h3>
+                        <h3 id="group-privacy-modal-title" style="margin: 0 0 6px 0; font-size: 1.25rem;">⚙️ Group Privacy Settings</h3>
                         <p style="color: #666; font-size: 0.88rem; line-height: 1.4; margin: 0;">
                             <strong>${escapeHtml(currentGroupData.name)}</strong> is currently <strong>🔒 Private</strong>.
                         </p>
@@ -998,6 +1007,7 @@ permalink: /groups/
             }
 
             modal.style.display = 'flex';
+            if (modal.classList && typeof modal.classList.add === 'function') modal.classList.add('open');
             setTimeout(() => {
                 const input = document.getElementById('privacy-modal-password');
                 if (input) input.focus();
@@ -1005,9 +1015,12 @@ permalink: /groups/
         }
 
         function closePrivacyModal(event) {
-            if (!event || event.target.id === 'group-privacy-modal' || event.target.classList.contains('modal-close')) {
+            if (!event || event.target.id === 'group-privacy-modal' || (event.target.classList && event.target.classList.contains('modal-close'))) {
                 const modal = document.getElementById('group-privacy-modal');
-                if (modal) modal.style.display = 'none';
+                if (modal) {
+                    modal.style.display = 'none';
+                    if (modal.classList && typeof modal.classList.remove === 'function') modal.classList.remove('open');
+                }
             }
         }
 
@@ -1159,13 +1172,32 @@ permalink: /groups/
             }
         }
 
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                const memberModal = document.getElementById('member-picks-modal');
-                const privacyModal = document.getElementById('group-privacy-modal');
-                if (memberModal) memberModal.style.display = 'none';
-                if (privacyModal) privacyModal.style.display = 'none';
+        function handleModalEscapeKey(e) {
+            if (!e || e.key !== 'Escape') return false;
+            let closedAny = false;
+            const overlays = typeof document.querySelectorAll === 'function'
+                ? Array.from(document.querySelectorAll('.modal-overlay'))
+                : [];
+            ['member-picks-modal', 'group-privacy-modal'].forEach(id => {
+                const el = typeof document.getElementById === 'function' ? document.getElementById(id) : null;
+                if (el && !overlays.includes(el)) overlays.push(el);
+            });
+            overlays.forEach(modal => {
+                const isOpen = (modal.style && modal.style.display && modal.style.display !== 'none') ||
+                               (modal.classList && typeof modal.classList.contains === 'function' && modal.classList.contains('open'));
+                if (isOpen) {
+                    if (modal.style) modal.style.display = 'none';
+                    if (modal.classList && typeof modal.classList.remove === 'function') modal.classList.remove('open');
+                    closedAny = true;
+                }
+            });
+            if (closedAny) {
+                if (typeof e.preventDefault === 'function') e.preventDefault();
+                if (typeof e.stopPropagation === 'function') e.stopPropagation();
             }
-        });
+            return closedAny;
+        }
+
+        document.addEventListener('keydown', handleModalEscapeKey);
     </script>
 

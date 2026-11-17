@@ -16,20 +16,22 @@ permalink: /scoreboard/
   </div>
   {% endif %}
   <!-- Player VAL Breakdown Modal -->
-  <div id="val-modal" class="modal-overlay" onclick="closeValModal(event)">
+  <div id="val-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="val-modal-title" onclick="closeValModal(event)">
     <div class="modal-box val-formula-modal-box val-breakdown-modal-box">
-        <span class="modal-close" onclick="closeValModal(event)">&times;</span>
-        <div id="val-modal-body" class="val-formula-content"></div>
+        <span class="modal-close" role="button" tabindex="0" aria-label="Close modal" onclick="closeValModal(event)">&times;</span>
+        <div id="val-modal-body" class="val-formula-content">
+            <h3 id="val-modal-title" style="display:none;">Player VAL Breakdown</h3>
+        </div>
     </div>
   </div>
 
   <!-- VAL Formula Explanation Modal -->
-  <div id="val-formula-modal" class="modal-overlay" onclick="closeValFormulaModal(event)">
+  <div id="val-formula-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="val-formula-modal-title" onclick="closeValFormulaModal(event)">
     <div class="modal-box val-formula-modal-box">
-        <span class="modal-close" onclick="closeValFormulaModal(event)">&times;</span>
+        <span class="modal-close" role="button" tabindex="0" aria-label="Close modal" onclick="closeValFormulaModal(event)">&times;</span>
         <div id="val-formula-content" class="val-formula-content">
             <div class="val-formula-header">
-                <h3>VAL (Value Rating) Formula</h3>
+                <h3 id="val-formula-modal-title">VAL (Value Rating) Formula</h3>
                 <span class="val-source-pill">ESPN Fantasy Standard</span>
             </div>
             <p class="val-intro-text">
@@ -149,40 +151,81 @@ permalink: /scoreboard/
           const playerSub = element.getAttribute('data-player-sub') || '';
           const bodyEl = document.getElementById('val-modal-body');
           bodyEl.innerHTML = renderValBreakdownHtml(details, playerName, playerSub);
-          document.getElementById('val-modal').style.display = 'flex';
+          const titleEl = bodyEl && typeof bodyEl.querySelector === 'function' ? bodyEl.querySelector('h3') : null;
+          if (titleEl) titleEl.id = 'val-modal-title';
+          const modalEl = document.getElementById('val-modal');
+          if (modalEl) {
+              modalEl.style.display = 'flex';
+              if (modalEl.classList && typeof modalEl.classList.add === 'function') modalEl.classList.add('open');
+          }
       }
   }
 
   function openFormulaFromBreakdown() {
-      document.getElementById('val-modal').style.display = 'none';
+      const valModal = document.getElementById('val-modal');
+      if (valModal) {
+          valModal.style.display = 'none';
+          if (valModal.classList && typeof valModal.classList.remove === 'function') valModal.classList.remove('open');
+      }
       showValFormulaModal();
   }
 
   function showValFormulaModal(event) {
       if (event && event.stopPropagation) event.stopPropagation();
-      document.getElementById('val-formula-modal').style.display = 'flex';
+      const modal = document.getElementById('val-formula-modal');
+      if (modal) {
+          modal.style.display = 'flex';
+          if (modal.classList && typeof modal.classList.add === 'function') modal.classList.add('open');
+      }
   }
 
   function closeValFormulaModal(event) {
-      if (!event || event.target.id === 'val-formula-modal' || event.target.classList.contains('modal-close')) {
-          document.getElementById('val-formula-modal').style.display = 'none';
+      if (!event || event.target.id === 'val-formula-modal' || (event.target.classList && event.target.classList.contains('modal-close'))) {
+          const modal = document.getElementById('val-formula-modal');
+          if (modal) {
+              modal.style.display = 'none';
+              if (modal.classList && typeof modal.classList.remove === 'function') modal.classList.remove('open');
+          }
       }
   }
 
   function closeValModal(event) {
-      if (!event || event.target.id === 'val-modal' || event.target.classList.contains('modal-close')) {
-          document.getElementById('val-modal').style.display = 'none';
+      if (!event || event.target.id === 'val-modal' || (event.target.classList && event.target.classList.contains('modal-close'))) {
+          const modal = document.getElementById('val-modal');
+          if (modal) {
+              modal.style.display = 'none';
+              if (modal.classList && typeof modal.classList.remove === 'function') modal.classList.remove('open');
+          }
       }
   }
 
-  document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-          const valModal = document.getElementById('val-modal');
-          const formulaModal = document.getElementById('val-formula-modal');
-          if (valModal) valModal.style.display = 'none';
-          if (formulaModal) formulaModal.style.display = 'none';
+  function handleModalEscapeKey(e) {
+      if (!e || e.key !== 'Escape') return false;
+      let closedAny = false;
+      const overlays = typeof document.querySelectorAll === 'function'
+          ? Array.from(document.querySelectorAll('.modal-overlay'))
+          : [];
+      ['val-modal', 'val-formula-modal'].forEach(id => {
+          const el = typeof document.getElementById === 'function' ? document.getElementById(id) : null;
+          if (el && !overlays.includes(el)) overlays.push(el);
+      });
+      overlays.forEach(modal => {
+          const isOpen = (modal.style && modal.style.display && modal.style.display !== 'none') ||
+                         (modal.classList && typeof modal.classList.contains === 'function' && modal.classList.contains('open'));
+          if (isOpen) {
+              if (modal.style) modal.style.display = 'none';
+              if (modal.classList && typeof modal.classList.remove === 'function') modal.classList.remove('open');
+              closedAny = true;
+          }
+      });
+      if (closedAny) {
+          if (typeof e.preventDefault === 'function') e.preventDefault();
+          if (typeof e.stopPropagation === 'function') e.stopPropagation();
       }
-  });
+      return closedAny;
+  }
+
+  document.addEventListener('keydown', handleModalEscapeKey);
 
   let currentGamePicks = {};
   let userGroups = [];

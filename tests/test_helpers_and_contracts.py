@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -257,3 +258,171 @@ sandbox.hydrateLiveScheduleEvents(schedClone, 'mens-college-basketball', '152').
         check=False,
     )
     assert proc.returncode == 0, f"Node test failed:\n{proc.stdout}\n{proc.stderr}"
+
+
+def test_modal_overlays_have_dialog_aria_attributes() -> None:
+    expected_modals = {
+        os.path.join("site_ui", "scoreboard", "index.html"): {
+            "val-modal": "val-modal-title",
+            "val-formula-modal": "val-formula-modal-title",
+        },
+        os.path.join("site_ui", "roster", "index.html"): {
+            "val-modal": "val-modal-title",
+            "val-formula-modal": "val-formula-modal-title",
+        },
+        os.path.join("site_ui", "group", "index.html"): {
+            "member-picks-modal": "member-picks-modal-title",
+            "group-privacy-modal": "group-privacy-modal-title",
+        },
+    }
+
+    overlay_tag_re = re.compile(r'<div\b[^>]*\bclass="[^"]*\bmodal-overlay\b[^"]*"[^>]*>', re.IGNORECASE)
+
+    for rel_path, modal_map in expected_modals.items():
+        full_path = os.path.join(REPO_ROOT, rel_path)
+        assert os.path.exists(full_path), f"Missing page {rel_path}"
+        with open(full_path, "r", encoding="utf-8") as f:
+            html_text = f.read()
+
+        tags = overlay_tag_re.findall(html_text)
+        assert len(tags) == len(modal_map), f"Expected {len(modal_map)} .modal-overlay tags in {rel_path}, found {len(tags)}"
+
+        found_ids = set()
+        for tag in tags:
+            id_match = re.search(r'\bid="([^"]+)"', tag)
+            assert id_match is not None, f".modal-overlay missing id in {rel_path}: {tag}"
+            modal_id = id_match.group(1)
+            found_ids.add(modal_id)
+            assert 'role="dialog"' in tag, f"#{modal_id} in {rel_path} missing role=\"dialog\": {tag}"
+            assert 'aria-modal="true"' in tag, f"#{modal_id} in {rel_path} missing aria-modal=\"true\": {tag}"
+            expected_label_id = modal_map[modal_id]
+            assert f'aria-labelledby="{expected_label_id}"' in tag, (
+                f"#{modal_id} in {rel_path} missing aria-labelledby=\"{expected_label_id}\": {tag}"
+            )
+            assert f'id="{expected_label_id}"' in html_text, (
+                f"Target element id=\"{expected_label_id}\" not found in {rel_path}"
+            )
+
+        assert found_ids == set(modal_map.keys())
+
+
+def test_modal_escape_key_handlers_via_node() -> None:
+    pages = [
+        (os.path.join(REPO_ROOT, "site_ui", "scoreboard", "index.html"), ["val-modal", "val-formula-modal"]),
+        (os.path.join(REPO_ROOT, "site_ui", "roster", "index.html"), ["val-modal", "val-formula-modal"]),
+        (os.path.join(REPO_ROOT, "site_ui", "group", "index.html"), ["member-picks-modal", "group-privacy-modal"]),
+    ]
+
+    for page_path, modal_ids in pages:
+        with open(page_path, "r", encoding="utf-8") as f:
+            html_text = f.read()
+
+        match = re.search(
+            r"(function\s+handleModalEscapeKey\s*\([^)]*\)\s*\{[\s\S]*?document\.addEventListener\s*\(\s*['\"]keydown['\"]\s*,\s*handleModalEscapeKey\s*\)\s*;)",
+            html_text,
+        )
+        assert match is not None, f"Could not find handleModalEscapeKey & keydown listener in {page_path}"
+        handler_js = match.group(1)
+        modal_ids_json = json.dumps(modal_ids)
+
+        node_script = f"""
+const vm = require('vm');
+const assert = require('assert');
+
+const modalIds = {modal_ids_json};
+function makeModal(id) {{
+  const classes = new Set(['modal-overlay']);
+  return {{
+    id,
+    style: {{ display: 'none' }},
+    classList: {{
+      add(c) {{ classes.add(c); }},
+      remove(c) {{ classes.delete(c); }},
+      contains(c) {{ return classes.has(c); }}
+    }}
+  }};
+}}
+
+const modalsById = {{}};
+modalIds.forEach(id => {{ modalsById[id] = makeModal(id); }});
+const listeners = {{}};
+
+const sandbox = {{
+  document: {{
+    getElementById(id) {{ return modalsById[id] || null; }},
+    querySelectorAll(sel) {{
+      if (sel === '.modal-overlay') return Object.values(modalsById);
+      return [];
+    }},
+    addEventListener(type, fn) {{
+      listeners[type] = fn;
+    }}
+  }},
+  Array
+}};
+
+vm.createContext(sandbox);
+vm.runInContext({json.dumps(handler_js)}, sandbox);
+
+assert.strictEqual(typeof listeners.keydown, 'function', 'keydown listener not registered');
+
+const firstModal = modalsById[modalIds[0]];
+const secondModal = modalsById[modalIds[1]];
+
+// 1. Pressing Escape when no modal is open returns false and does not preventDefault
+let prevented = false;
+const resClosed = listeners.keydown({{
+  key: 'Escape',
+  preventDefault() {{ prevented = true; }},
+  stopPropagation() {{}}
+}});
+assert.strictEqual(resClosed, false);
+assert.strictEqual(prevented, false);
+
+// 2. Pressing non-Escape key while modal is open leaves modal open
+firstModal.style.display = 'flex';
+firstModal.classList.add('open');
+const resEnter = listeners.keydown({{
+  key: 'Enter',
+  preventDefault() {{ prevented = true; }},
+  stopPropagation() {{}}
+}});
+assert.strictEqual(resEnter, false);
+assert.strictEqual(firstModal.style.display, 'flex');
+assert.strictEqual(firstModal.classList.contains('open'), true);
+
+// 3. Pressing Escape while firstModal has display: 'flex' closes it and prevents default
+let stopped = false;
+const resEsc = listeners.keydown({{
+  key: 'Escape',
+  preventDefault() {{ prevented = true; }},
+  stopPropagation() {{ stopped = true; }}
+}});
+assert.strictEqual(resEsc, true);
+assert.strictEqual(prevented, true);
+assert.strictEqual(stopped, true);
+assert.strictEqual(firstModal.style.display, 'none');
+assert.strictEqual(firstModal.classList.contains('open'), false);
+assert.strictEqual(secondModal.style.display, 'none');
+
+// 4. Pressing Escape while secondModal has .open class closes it
+secondModal.style.display = '';
+secondModal.classList.add('open');
+const resEsc2 = listeners.keydown({{
+  key: 'Escape',
+  preventDefault() {{}},
+  stopPropagation() {{}}
+}});
+assert.strictEqual(resEsc2, true);
+assert.strictEqual(secondModal.style.display, 'none');
+assert.strictEqual(secondModal.classList.contains('open'), false);
+"""
+        proc = subprocess.run(
+            ["node", "-e", node_script],
+            cwd=REPO_ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert proc.returncode == 0, f"Modal Escape key test failed for {page_path}:\n{proc.stdout}\n{proc.stderr}"
+
