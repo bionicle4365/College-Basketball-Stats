@@ -11,6 +11,7 @@ Autonomous tasks are discovered via [task-generator](file:///d:/Git/College-Bask
 - **Audit codebase & telemetry (in isolated `origin/main` worktree)**: `python scripts/audit_and_generate_tasks.py --worktree --run-tests --espn --ci --publish`
 - **Propose weekly features (in isolated `origin/main` worktree)**: `python scripts/propose_feature_tasks.py --worktree --publish`
 - **List proposed issues**: `python scripts/agent_backlog.py list --status proposed`
+- **Check & reply to human comments on GitHub Issues**: `python scripts/agent_backlog.py comment-queue --json` and `python scripts/agent_backlog.py reply-issue <issue_number> --body "..." [--update-body-file <path>] [--status ready]`
 - **Approve issue**: `python scripts/agent_backlog.py approve <issue_number>` (transitions `agent:proposed` -> `agent:ready`)
 - **Claim next rework PR or approved task & isolated worktree**: `python scripts/agent_backlog.py next --claim --worktree --include-rework --reclaim-stale-hours 6 --agent scheduled-executor --json`
 - **Verify task**: `python scripts/verify_task.py --cwd <worktree_path> --issue <issue_number>`

@@ -5,11 +5,17 @@ description: Weekly product and UX feature proposer that inspects docs/product_r
 
 ## Guidelines for Weekly Feature & Enhancement Proposals
 
-### 1. Inspect Backlog & Propose Balanced Roadmap Features
-Run the deterministic feature proposer script with `--worktree` (creating an isolated `agent/feature-proposer` worktree from the latest `origin/main`) to check open/closed `source:feature` and `source:roadmap` issues and publish up to 2 deduplicated feature proposals across underrepresented product pillars:
+### 1. Inspect Backlog, Reply to Issue Comments & Propose Balanced Roadmap Features
+First check for any unanswered human comments on open GitHub Issues and respond (updating the issue spec/body/screenshots if requested):
+```powershell
+python scripts/agent_backlog.py comment-queue --json
+python scripts/agent_backlog.py reply-issue <issue_number> --body "..." [--update-body-file <path>] [--status ready]
+```
+Then run the deterministic feature proposer script with `--worktree` (creating an isolated `agent/feature-proposer` worktree from the latest `origin/main`) to check open/closed `source:feature` and `source:roadmap` issues and publish up to 2 deduplicated feature proposals across underrepresented product pillars (automatically rendering and publishing Light & Dark mode preview screenshots to `agent-assets` for UI features):
 ```powershell
 python scripts/propose_feature_tasks.py --worktree --publish --max-new-features 2 --max-open-features 4
 ```
+When summarizing proposed features in chat, always display the published Light/Dark preview screenshots (`![Caption](https://raw.githubusercontent.com/...)`) inline whenever a proposal includes UI changes.
 
 ### 2. Four Core Product Pillars ([product_roadmap.md](file:///d:/Git/College-Basketball-Stats/docs/product_roadmap.md))
 1. **Pick'em & Group Leaderboards (`domain:groups-firestore`, `domain:site-ui`)**:

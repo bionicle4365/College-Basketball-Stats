@@ -18,10 +18,11 @@ import sys
 from typing import Any, Dict, List, Optional, Set
 
 try:
-    from scripts import agent_backlog
+    from scripts import agent_backlog, capture_screenshots
 except ImportError:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     import agent_backlog  # type: ignore[no-redef]
+    import capture_screenshots  # type: ignore[no-redef]
 
 
 FEATURE_CATALOG: List[Dict[str, Any]] = [
@@ -168,6 +169,34 @@ FEATURE_CATALOG: List[Dict[str, Any]] = [
         "priority": "p2",
         "source": "feature",
         "domains": ["espn-api", "analytics", "site-ui"],
+        "screenshot_caption": "Proposed Quadrant Game List Drilldown",
+        "mockup_html": (
+            '<div class="roster-drawer-inner standings-drawer-inner" style="border-radius:12px; border:1px solid #cbd5e1; padding:18px; max-width:760px;">'
+            '<div>'
+            '<div class="roster-section-header" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">'
+            '<span class="roster-section-title">Quadrant Win-Loss Breakdown — NC State Wolfpack</span>'
+            '<span class="roster-minilog-hint">Tap a Quadrant card to inspect matchups · via ESPN BPI</span>'
+            '</div>'
+            '<div class="standings-quad-grid">'
+            '<div class="standings-quad-card" style="outline:2px solid #2563eb; cursor:pointer;">'
+            '<div class="standings-quad-top"><span class="quad-pill quad-pill-q1">Q1</span><span class="standings-quad-pct pill-sub-pos">57%</span></div>'
+            '<div class="standings-quad-record">4-3</div>'
+            '<div class="standings-quad-meta"><span>2 left · Expanded ▾</span><span class="standings-quad-cutoff">H 1–30 · N 1–50 · A 1–75</span></div>'
+            '</div>'
+            '<div class="standings-quad-card"><div class="standings-quad-top"><span class="quad-pill quad-pill-q2">Q2</span><span class="standings-quad-pct pill-sub-pos">67%</span></div><div class="standings-quad-record">4-2</div><div class="standings-quad-meta"><span>1 left · Tap to view ▸</span><span class="standings-quad-cutoff">H 31–75 · N 51–100 · A 76–135</span></div></div>'
+            '<div class="standings-quad-card"><div class="standings-quad-top"><span class="quad-pill quad-pill-q3">Q3</span><span class="standings-quad-pct pill-sub-pos">83%</span></div><div class="standings-quad-record">5-1</div><div class="standings-quad-meta"><span>0 left · Tap to view ▸</span><span class="standings-quad-cutoff">H 76–160 · N 101–200 · A 136–240</span></div></div>'
+            '<div class="standings-quad-card"><div class="standings-quad-top"><span class="quad-pill quad-pill-q4">Q4</span><span class="standings-quad-pct pill-sub-pos">100%</span></div><div class="standings-quad-record">6-0</div><div class="standings-quad-meta"><span>0 left · Tap to view ▸</span><span class="standings-quad-cutoff">H 161+ · N 201+ · A 241+</span></div></div>'
+            '</div>'
+            '<div style="margin-top:12px; border-radius:8px; border:1px solid rgba(148,163,184,0.35); padding:10px 12px; background:rgba(37,99,235,0.05);">'
+            '<div style="font-size:0.78rem; font-weight:700; text-transform:uppercase; letter-spacing:0.04em; margin-bottom:8px; display:flex; justify-content:space-between;">'
+            '<span>Quadrant 1 Matchups (4-3, 2 Remaining)</span><span style="opacity:0.75;">H 1–30 · N 1–50 · A 1–75</span></div>'
+            '<div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:6px; font-size:0.82rem;">'
+            '<div style="display:flex; justify-content:space-between; padding:6px 8px; border-radius:6px; background:rgba(16,185,129,0.12);"><span><strong>@ #6 Duke</strong> (Away)</span><span style="font-weight:700; color:#10b981;">W 78-74</span></div>'
+            '<div style="display:flex; justify-content:space-between; padding:6px 8px; border-radius:6px; background:rgba(239,68,68,0.12);"><span><strong>vs #4 Kansas</strong> (Neutral)</span><span style="font-weight:700; color:#ef4444;">L 71-76</span></div>'
+            '<div style="display:flex; justify-content:space-between; padding:6px 8px; border-radius:6px; background:rgba(16,185,129,0.12);"><span><strong>vs #11 North Carolina</strong> (Home)</span><span style="font-weight:700; color:#10b981;">W 82-76</span></div>'
+            '<div style="display:flex; justify-content:space-between; padding:6px 8px; border-radius:6px; background:rgba(148,163,184,0.15);"><span><strong>@ #19 Virginia</strong> (Away)</span><span style="font-weight:600; opacity:0.8;">Upcoming · Feb 24</span></div>'
+            '</div></div></div></div>'
+        ),
     },
     {
         "pillar": "pwa-mobile",
@@ -243,6 +272,24 @@ FEATURE_CATALOG: List[Dict[str, Any]] = [
         "priority": "p2",
         "source": "feature",
         "domains": ["groups-firestore", "site-ui", "analytics"],
+        "screenshot_caption": "Proposed Group Leaderboard Filter Modes",
+        "mockup_html": (
+            '<div class="card" style="padding:18px; border-radius:12px; max-width:740px;">'
+            '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">'
+            '<h3 style="margin:0; font-size:1.05rem;">Group Standings · Wolfpack Pick\'em</h3>'
+            '<div style="display:inline-flex; gap:6px; background:rgba(148,163,184,0.15); padding:4px; border-radius:999px; font-size:0.78rem; font-weight:600;">'
+            '<span style="padding:4px 10px; border-radius:999px; opacity:0.75;">All Games (18)</span>'
+            '<span style="padding:4px 10px; border-radius:999px; background:#2563eb; color:#fff;">Last 5 Games</span>'
+            '<span style="padding:4px 10px; border-radius:999px; opacity:0.75;">Quad 1–2 Matchups (9)</span>'
+            '</div></div>'
+            '<table class="standings-table" style="width:100%; border-collapse:collapse; font-size:0.86rem;">'
+            '<thead><tr style="text-align:left; border-bottom:1px solid rgba(148,163,184,0.3);">'
+            '<th style="padding:8px;">Rank</th><th style="padding:8px;">Member</th><th style="padding:8px;">Filtered VAL (Last 5)</th><th style="padding:8px;">Avg VAL</th><th style="padding:8px;">Top Pick %</th>'
+            '</tr></thead><tbody>'
+            '<tr style="border-bottom:1px solid rgba(148,163,184,0.18);"><td style="padding:8px; font-weight:700;">#1</td><td style="padding:8px; font-weight:600;">Justin</td><td style="padding:8px; font-weight:700; color:#10b981;">+138</td><td style="padding:8px;">27.6</td><td style="padding:8px;">60%</td></tr>'
+            '<tr><td style="padding:8px; font-weight:700;">#2</td><td style="padding:8px; font-weight:600;">Alex</td><td style="padding:8px; font-weight:700; color:#10b981;">+121</td><td style="padding:8px;">24.2</td><td style="padding:8px;">40%</td></tr>'
+            '</tbody></table></div>'
+        ),
     },
     {
         "pillar": "live-boxscore",
@@ -280,6 +327,20 @@ FEATURE_CATALOG: List[Dict[str, Any]] = [
         "priority": "p2",
         "source": "feature",
         "domains": ["analytics", "site-ui"],
+        "screenshot_caption": "Proposed Head-to-Head Team Box Score Comparison Strip",
+        "mockup_html": (
+            '<div class="card" style="padding:16px 18px; border-radius:12px; max-width:740px;">'
+            '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; font-weight:700; font-size:0.9rem;">'
+            '<span>NC State (Away)</span><span style="font-size:0.76rem; text-transform:uppercase; opacity:0.7;">Team Box Score Comparison</span><span>Duke (Home)</span>'
+            '</div>'
+            '<div class="roster-summary-strip" style="display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:8px;">'
+            '<div class="roster-stat-pill"><span class="roster-pill-label">Team VAL</span><span class="roster-pill-value" style="font-size:0.98rem;"><strong style="color:#10b981;">148</strong> vs 134</span><span class="roster-pill-sub">Fantasy Total</span></div>'
+            '<div class="roster-stat-pill"><span class="roster-pill-label">FG% / 3P%</span><span class="roster-pill-value" style="font-size:0.95rem;"><strong>48.4%</strong> vs 44.1%</span><span class="roster-pill-sub">3PT: 39.1% vs 33.3%</span></div>'
+            '<div class="roster-stat-pill"><span class="roster-pill-label">Rebounds</span><span class="roster-pill-value" style="font-size:0.98rem;"><strong>37</strong> vs 33</span><span class="roster-pill-sub">+4 Margin</span></div>'
+            '<div class="roster-stat-pill"><span class="roster-pill-label">AST / TO</span><span class="roster-pill-value" style="font-size:0.98rem;"><strong>1.8</strong> vs 1.3</span><span class="roster-pill-sub">16 AST · 9 TO</span></div>'
+            '<div class="roster-stat-pill"><span class="roster-pill-label">Stocks</span><span class="roster-pill-value" style="font-size:0.98rem;"><strong>11</strong> vs 8</span><span class="roster-pill-sub">7 STL · 4 BLK</span></div>'
+            '</div></div>'
+        ),
     },
     {
         "pillar": "standings-resume",
@@ -319,6 +380,28 @@ FEATURE_CATALOG: List[Dict[str, Any]] = [
         "priority": "p2",
         "source": "feature",
         "domains": ["espn-api", "analytics", "site-ui"],
+        "screenshot_caption": "Proposed Conference Switcher & Standings Sort Controls",
+        "mockup_html": (
+            '<div class="card" style="padding:16px 18px; border-radius:12px; max-width:740px;">'
+            '<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:12px;">'
+            '<div style="display:flex; align-items:center; gap:8px;">'
+            '<span style="font-weight:700; font-size:0.95rem;">Conference:</span>'
+            '<select style="padding:5px 10px; border-radius:8px; border:1px solid rgba(148,163,184,0.4); font-weight:600;"><option>ACC (Atlantic Coast Conference)</option></select>'
+            '</div>'
+            '<div style="display:inline-flex; gap:6px; font-size:0.78rem; font-weight:600;">'
+            '<span style="padding:4px 10px; border-radius:999px; background:rgba(148,163,184,0.18);">Conf Seed</span>'
+            '<span style="padding:4px 10px; border-radius:999px; background:#2563eb; color:#fff;">BPI Rank ▲</span>'
+            '<span style="padding:4px 10px; border-radius:999px; background:rgba(148,163,184,0.18);">SOR Rank</span>'
+            '<span style="padding:4px 10px; border-radius:999px; background:rgba(148,163,184,0.18);">Overall Win%</span>'
+            '</div></div>'
+            '<table class="standings-table" style="width:100%; border-collapse:collapse; font-size:0.85rem;">'
+            '<thead><tr style="text-align:left; border-bottom:1px solid rgba(148,163,184,0.3);">'
+            '<th style="padding:7px;">Seed</th><th style="padding:7px;">Team</th><th style="padding:7px;">Conf</th><th style="padding:7px;">Overall</th><th style="padding:7px; color:#2563eb;">BPI ▲</th><th style="padding:7px;">SOR</th>'
+            '</tr></thead><tbody>'
+            '<tr style="border-bottom:1px solid rgba(148,163,184,0.18);"><td style="padding:7px;">#1</td><td style="padding:7px; font-weight:600;">Duke</td><td style="padding:7px;">14-2</td><td style="padding:7px;">23-4</td><td style="padding:7px; font-weight:700;">#3</td><td style="padding:7px;">#5</td></tr>'
+            '<tr><td style="padding:7px;">#2</td><td style="padding:7px; font-weight:600;">NC State</td><td style="padding:7px;">13-3</td><td style="padding:7px;">22-5</td><td style="padding:7px; font-weight:700;">#9</td><td style="padding:7px;">#8</td></tr>'
+            '</tbody></table></div>'
+        ),
     },
     {
         "pillar": "pwa-mobile",
@@ -392,6 +475,78 @@ def select_candidate_features(
     return selected
 
 
+def _render_and_attach_issue_screenshots(
+    spec: Dict[str, Any],
+    issue_obj: dict,
+    repo: Optional[str] = None,
+) -> List[Dict[str, str]]:
+    """Render Light/Dark mockup PNGs for a UI feature spec, publish to `agent-assets`, and update the issue body."""
+    existing_screenshots = spec.get("screenshots")
+    if existing_screenshots:
+        return list(existing_screenshots)
+
+    mockup_html = spec.get("mockup_html")
+    if not mockup_html:
+        return []
+
+    issue_number = int(issue_obj.get("number") or 0)
+    if not issue_number:
+        return []
+
+    try:
+        repo_root = agent_backlog._get_canonical_repo_root()
+        out_dir = os.path.join(repo_root, "scratch", "screenshots")
+        css_text = capture_screenshots.read_file_from_ref("site_ui/styles.css", repo_root=repo_root)
+        shots = capture_screenshots.capture_html_screenshots(
+            body_html=mockup_html,
+            output_dir=out_dir,
+            name_prefix=f"issue-{issue_number}-mockup",
+            css_text=css_text,
+        )
+        files_map: Dict[str, str] = {}
+        for shot in shots:
+            mode = shot["mode"]
+            files_map[f"screenshots/issue-{issue_number}/mockup-{mode}.png"] = shot["path"]
+
+        urls = capture_screenshots.publish_assets_to_branch(
+            files_map=files_map,
+            commit_message=f"chore: add issue #{issue_number} visual preview screenshots",
+            repo=repo,
+            repo_root=repo_root,
+        )
+        base_caption = spec.get("screenshot_caption") or "Proposed UI Preview"
+        published_screenshots: List[Dict[str, str]] = []
+        for mode_key, mode_label in (("light", "Light Mode"), ("dark", "Dark Mode")):
+            rel_key = f"screenshots/issue-{issue_number}/mockup-{mode_key}.png"
+            if rel_key in urls:
+                published_screenshots.append(
+                    {
+                        "caption": f"{base_caption} ({mode_label})",
+                        "url": urls[rel_key],
+                    }
+                )
+
+        if published_screenshots:
+            updated_body = agent_backlog.format_task_body(
+                objective=spec["objective"],
+                spec={
+                    "owned_paths": spec["owned_paths"],
+                    "forbidden_paths": spec["forbidden_paths"],
+                    "acceptance_criteria": spec["acceptance_criteria"],
+                    "verification_commands": spec["verification_commands"],
+                },
+                context=spec.get("context"),
+                examples=spec.get("examples"),
+                screenshots=published_screenshots,
+            )
+            agent_backlog.update_task_issue(issue_number, body=updated_body, repo=repo)
+            issue_obj["body"] = updated_body
+        return published_screenshots
+    except Exception as exc:
+        print(f"WARNING: Could not generate/publish screenshots for issue #{issue_number}: {exc}", file=sys.stderr)
+        return []
+
+
 def audit_and_propose_features(
     repo: Optional[str] = None,
     max_new_features: int = 2,
@@ -439,6 +594,11 @@ def audit_and_propose_features(
                 screenshots=spec.get("screenshots"),
                 repo=repo,
             )
+            if not res.get("deduplicated") and spec.get("mockup_html") and not spec.get("screenshots"):
+                attached_shots = _render_and_attach_issue_screenshots(spec, res["issue"], repo=repo)
+                res["screenshots"] = attached_shots
+            else:
+                res["screenshots"] = spec.get("screenshots") or []
             published.append(res)
 
     return {
@@ -510,6 +670,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                 issue = item["issue"]
                 verb = "Matched existing" if item["deduplicated"] else "Created"
                 print(f"  - {verb}: #{issue['number']} {issue['title']} ({issue['html_url']})")
+                for shot in item.get("screenshots") or []:
+                    print(f"    Screenshot [{shot['caption']}]: {shot['url']}")
 
     return 0
 

@@ -27,6 +27,7 @@ AUTO_REVIEW_MARKER_RE = re.compile(
     r"<!--\s*auto-review:sha=([^\s>]+)(?:\s+verdict=([a-z-]+))?(?:\s+round=(\d+))?\s*-->"
 )
 AUTO_EXECUTOR_MARKER_RE = re.compile(r"<!--\s*auto-executor:[^\s>]+.*?-->")
+AUTO_ISSUE_REPLY_MARKER_RE = re.compile(r"<!--\s*auto-issue-reply:comment_id=(\d+)\s*-->")
 MAX_AUTO_REVIEW_ROUNDS = 3
 
 STATUS_LABELS: Dict[str, Tuple[str, str]] = {
@@ -1116,14 +1117,23 @@ def list_task_issues(
 ) -> List[dict]:
     """List agentic issues filtered by status/domain/source and sorted by priority."""
     labels: List[str] = []
+    status_label: Optional[str] = None
     if status and status != "all":
-        labels.append(status if status.startswith("agent:") else f"agent:{status}")
+        status_label = status if status.startswith("agent:") else f"agent:{status}"
+        labels.append(status_label)
     if domain:
         labels.append(domain if domain.startswith("domain:") else f"domain:{domain}")
     if source:
         labels.append(source if source.startswith("source:") else f"source:{source}")
 
     issues = _get_paginated_issues(state=state, labels=labels or None, repo=repo, token=token)
+    if status_label == "agent:proposed":
+        higher_status = set(STATUS_LABELS.keys()) - {"agent:proposed"}
+        issues = [
+            item
+            for item in issues
+            if not (higher_status & {l.get("name", "") for l in item.get("labels", [])})
+        ]
     return sorted(issues, key=_issue_priority_rank)
 
 
@@ -1132,6 +1142,7 @@ def get_task_issue(
     repo: Optional[str] = None,
     token: Optional[str] = None,
     persist_inferred_spec: bool = False,
+    include_comments: bool = True,
 ) -> Dict[str, Any]:
     """Fetch a single issue and parse or infer its task specification."""
     issue = github_request("GET", f"/issues/{issue_number}", repo=repo, token=token)
@@ -1149,6 +1160,22 @@ def get_task_issue(
     except Exception as exc:
         spec_error = str(exc)
 
+    user_comments: List[Dict[str, Any]] = []
+    if include_comments and int(issue.get("comments", 0) or 0) > 0:
+        try:
+            raw_comments = github_request("GET", f"/issues/{issue_number}/comments", repo=repo, token=token) or []
+            for c in raw_comments:
+                c_body = str(c.get("body") or "").strip()
+                if c_body and not _is_automation_comment(c_body):
+                    user_comments.append({
+                        "id": c.get("id"),
+                        "author": (c.get("user") or {}).get("login"),
+                        "created_at": c.get("created_at"),
+                        "body": c_body,
+                    })
+        except Exception:
+            user_comments = []
+
     return {
         "number": issue.get("number"),
         "title": issue.get("title"),
@@ -1159,6 +1186,7 @@ def get_task_issue(
         "spec_inferred": spec_inferred,
         "spec_error": spec_error,
         "body": resolved_body,
+        "user_comments": user_comments,
     }
 
 
@@ -1626,7 +1654,11 @@ def _is_automation_comment(body: str) -> bool:
     text = (body or "").strip()
     if not text:
         return True
-    if AUTO_REVIEW_MARKER_RE.search(text) or AUTO_EXECUTOR_MARKER_RE.search(text):
+    if (
+        AUTO_REVIEW_MARKER_RE.search(text)
+        or AUTO_EXECUTOR_MARKER_RE.search(text)
+        or AUTO_ISSUE_REPLY_MARKER_RE.search(text)
+    ):
         return True
     if text.startswith((
         "Claimed by autonomous agent",
@@ -1638,6 +1670,164 @@ def _is_automation_comment(body: str) -> bool:
     )):
         return True
     return False
+
+
+def analyze_issue_comment_state(
+    issue: dict,
+    comments: List[dict],
+) -> Dict[str, Any]:
+    """Identify unanswered human comments on a GitHub Issue."""
+    last_replied_comment_id = 0
+    last_bot_activity_dt: Optional[datetime] = None
+
+    for c in comments:
+        body = str(c.get("body") or "")
+        for m in AUTO_ISSUE_REPLY_MARKER_RE.finditer(body):
+            try:
+                last_replied_comment_id = max(last_replied_comment_id, int(m.group(1)))
+            except ValueError:
+                pass
+        if _is_automation_comment(body):
+            dt = _parse_github_iso_timestamp(c.get("created_at") or c.get("updated_at"))
+            if dt and (last_bot_activity_dt is None or dt > last_bot_activity_dt):
+                last_bot_activity_dt = dt
+
+    unanswered: List[Dict[str, Any]] = []
+    all_user_comments: List[Dict[str, Any]] = []
+
+    for c in comments:
+        body = str(c.get("body") or "").strip()
+        if not body or _is_automation_comment(body):
+            continue
+        cid = int(c.get("id") or 0)
+        created_str = c.get("created_at")
+        created_dt = _parse_github_iso_timestamp(created_str)
+        entry = {
+            "id": cid,
+            "author": (c.get("user") or {}).get("login"),
+            "created_at": created_str,
+            "body": body,
+        }
+        all_user_comments.append(entry)
+
+        if cid > last_replied_comment_id:
+            if last_replied_comment_id > 0 or last_bot_activity_dt is None or (
+                created_dt is not None and created_dt > last_bot_activity_dt
+            ):
+                unanswered.append(entry)
+
+    latest_comment_id = unanswered[-1]["id"] if unanswered else last_replied_comment_id
+    return {
+        "needs_reply": bool(unanswered),
+        "latest_comment_id": latest_comment_id,
+        "last_replied_comment_id": last_replied_comment_id,
+        "unanswered_comments": unanswered,
+        "all_user_comments": all_user_comments,
+    }
+
+
+def list_issues_with_unanswered_comments(
+    repo: Optional[str] = None,
+    token: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Return open GitHub Issues that have unanswered human comments."""
+    target_repo = repo or detect_repo_slug()
+    auth_token = token or get_github_token()
+    open_issues = _get_paginated_issues(state="open", repo=target_repo, token=auth_token)
+    queue: List[Dict[str, Any]] = []
+
+    for issue in sorted(open_issues, key=_issue_priority_rank):
+        if int(issue.get("comments", 0) or 0) <= 0:
+            continue
+        issue_number = int(issue["number"])
+        comments = github_request(
+            "GET",
+            f"/issues/{issue_number}/comments",
+            repo=target_repo,
+            token=auth_token,
+        ) or []
+        state = analyze_issue_comment_state(issue, comments)
+        if not state["needs_reply"]:
+            continue
+
+        spec: Optional[Dict[str, Any]] = None
+        spec_error: Optional[str] = None
+        try:
+            spec, _, _ = resolve_or_infer_issue_spec(issue, persist=False, repo=target_repo, token=auth_token)
+        except Exception as exc:
+            spec_error = str(exc)
+
+        queue.append({
+            "issue_number": issue_number,
+            "title": issue.get("title"),
+            "html_url": issue.get("html_url"),
+            "labels": [l.get("name", "") for l in issue.get("labels", [])],
+            "body": issue.get("body") or "",
+            "spec": spec,
+            "spec_error": spec_error,
+            "latest_comment_id": state["latest_comment_id"],
+            "unanswered_comments": state["unanswered_comments"],
+            "all_user_comments": state["all_user_comments"],
+        })
+
+    return queue
+
+
+def reply_to_issue_comment(
+    issue_number: int,
+    body: str,
+    reply_to_comment_id: Optional[int] = None,
+    updated_issue_body: Optional[str] = None,
+    new_status: Optional[str] = None,
+    repo: Optional[str] = None,
+    token: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Post an automated agent response to the latest human comment on a GitHub Issue."""
+    target_repo = repo or detect_repo_slug()
+    auth_token = token or get_github_token()
+
+    issue = github_request("GET", f"/issues/{issue_number}", repo=target_repo, token=auth_token)
+    comments = github_request("GET", f"/issues/{issue_number}/comments", repo=target_repo, token=auth_token) or []
+    state = analyze_issue_comment_state(issue, comments)
+
+    target_cid = reply_to_comment_id or state["latest_comment_id"]
+    if not target_cid and state["all_user_comments"]:
+        target_cid = int(state["all_user_comments"][-1]["id"] or 0)
+
+    patch_payload: Dict[str, Any] = {}
+    if updated_issue_body is not None:
+        patch_payload["body"] = updated_issue_body
+    if new_status is not None:
+        status_label = new_status if new_status.startswith("agent:") else f"agent:{new_status}"
+        if status_label not in STATUS_LABELS:
+            raise ValueError(f"Unsupported status label '{new_status}'.")
+        current_labels = [lbl.get("name", "") for lbl in issue.get("labels", [])]
+        patch_payload["labels"] = _replace_status_label(current_labels, status_label)
+
+    if patch_payload:
+        github_request(
+            "PATCH",
+            f"/issues/{issue_number}",
+            payload=patch_payload,
+            repo=target_repo,
+            token=auth_token,
+        )
+
+    marker = f"<!-- auto-issue-reply:comment_id={target_cid or 0} -->"
+    comment_body = f"{marker}\n{body.strip()}"
+    posted = github_request(
+        "POST",
+        f"/issues/{issue_number}/comments",
+        payload={"body": comment_body},
+        repo=target_repo,
+        token=auth_token,
+    )
+    return {
+        "issue_number": issue_number,
+        "replied_to_comment_id": target_cid or 0,
+        "comment_url": (posted or {}).get("html_url"),
+        "updated_issue": bool(patch_payload),
+    }
 
 
 def _sync_labels_removing_review_state(current_labels: List[str], target_status: Optional[str] = None) -> List[str]:
@@ -2372,6 +2562,22 @@ def _build_parser() -> argparse.ArgumentParser:
     rq_p.add_argument("--max-rounds", type=int, default=MAX_AUTO_REVIEW_ROUNDS)
     rq_p.add_argument("--json", action="store_true")
 
+    cq_p = subparsers.add_parser("comment-queue", help="List open GitHub Issues that have unanswered human comments")
+    cq_p.add_argument("--json", action="store_true")
+
+    ri_p = subparsers.add_parser("reply-issue", help="Reply to the latest human comment on a GitHub Issue")
+    ri_p.add_argument("issue_number", type=int)
+    ri_p.add_argument("--body", required=True, help="Agent response markdown body to post on the issue")
+    ri_p.add_argument("--reply-to", type=int, default=None, help="Optional specific GitHub comment ID being answered")
+    ri_p.add_argument("--update-body-file", default=None, help="Optional path to a markdown file to replace the issue body")
+    ri_p.add_argument(
+        "--status",
+        choices=["proposed", "ready", "in-progress", "review", "changes-requested", "blocked"],
+        default=None,
+        help="Optionally transition the issue's agent:* status label",
+    )
+    ri_p.add_argument("--json", action="store_true")
+
     pr_wt_p = subparsers.add_parser("pr-worktree", help="Create an isolated git worktree for reviewing a Pull Request branch")
     pr_wt_p.add_argument("pr_number", type=int)
     pr_wt_p.add_argument("--base", default="main", help="Base branch to compare against (default: main)")
@@ -2570,6 +2776,41 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(f"Found {len(queue)} PR(s) awaiting code review:")
             for item in queue:
                 print(f"  PR #{item['pr_number']} [{item['head_branch']}] {item['title']} ({item['html_url']})")
+        return 0
+
+    if args.command == "comment-queue":
+        queue = list_issues_with_unanswered_comments(repo=args.repo)
+        if args.json:
+            print(json.dumps(queue, indent=2))
+        else:
+            print(f"Found {len(queue)} issue(s) with unanswered comments:")
+            for item in queue:
+                print(
+                    f"  #{item['issue_number']} {item['title']} "
+                    f"({len(item['unanswered_comments'])} new comment(s)) - {item['html_url']}"
+                )
+        return 0
+
+    if args.command == "reply-issue":
+        updated_body: Optional[str] = None
+        if args.update_body_file:
+            with open(args.update_body_file, "r", encoding="utf-8") as f:
+                updated_body = f.read()
+        res = reply_to_issue_comment(
+            issue_number=args.issue_number,
+            body=args.body,
+            reply_to_comment_id=args.reply_to,
+            updated_issue_body=updated_body,
+            new_status=args.status,
+            repo=args.repo,
+        )
+        if args.json:
+            print(json.dumps(res, indent=2))
+        else:
+            print(
+                f"Replied to issue #{res['issue_number']} "
+                f"(comment_id={res['replied_to_comment_id']}): {res['comment_url']}"
+            )
         return 0
 
     if args.command == "pr-worktree":

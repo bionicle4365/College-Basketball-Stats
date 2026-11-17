@@ -448,3 +448,93 @@ def test_infer_and_backfill_manual_issue_spec(monkeypatch: pytest.MonkeyPatch) -
     parsed = agent_backlog.parse_task_spec(updated_body)
     assert parsed["owned_paths"] == inferred["owned_paths"]
 
+
+def test_analyze_issue_comment_state_and_reply(monkeypatch: pytest.MonkeyPatch) -> None:
+    issue = {
+        "number": 6,
+        "title": "Add Quadrant 1-4 game list drilldown",
+        "labels": [{"name": "agent:proposed"}, {"name": "source:feature"}],
+        "comments": 2,
+    }
+    comments = [
+        {
+            "id": 101,
+            "user": {"login": "Justin"},
+            "created_at": "2026-11-16T12:00:00Z",
+            "body": "Can we also show the game date for upcoming games in each quadrant?",
+        }
+    ]
+    state1 = agent_backlog.analyze_issue_comment_state(issue, comments)
+    assert state1["needs_reply"] is True
+    assert state1["latest_comment_id"] == 101
+    assert len(state1["unanswered_comments"]) == 1
+
+    # Once the agent replies with the marker for comment_id=101, needs_reply becomes False
+    comments_with_reply = [
+        *comments,
+        {
+            "id": 102,
+            "user": {"login": "bot"},
+            "created_at": "2026-11-16T12:05:00Z",
+            "body": "<!-- auto-issue-reply:comment_id=101 -->\nYes! Updated the spec to include `dateLabel`.",
+        },
+    ]
+    state2 = agent_backlog.analyze_issue_comment_state(issue, comments_with_reply)
+    assert state2["needs_reply"] is False
+    assert state2["last_replied_comment_id"] == 101
+
+    # Follow-up human comment triggers needs_reply again
+    comments_followup = [
+        *comments_with_reply,
+        {
+            "id": 103,
+            "user": {"login": "Justin"},
+            "created_at": "2026-11-16T12:10:00Z",
+            "body": "Looks great, please mark ready!",
+        },
+    ]
+    state3 = agent_backlog.analyze_issue_comment_state(issue, comments_followup)
+    assert state3["needs_reply"] is True
+    assert state3["latest_comment_id"] == 103
+    assert [c["id"] for c in state3["unanswered_comments"]] == [103]
+
+    posted_calls = []
+
+    def fake_gh(method, path, payload=None, repo=None, token=None):
+        posted_calls.append((method, path, payload))
+        if method == "GET" and path == "/issues/6":
+            return issue
+        if method == "GET" and path == "/issues/6/comments":
+            return comments_followup
+        if method == "POST" and path == "/issues/6/comments":
+            return {"html_url": "https://github.com/example/repo/issues/6#issuecomment-104"}
+        return {}
+
+    monkeypatch.setattr(agent_backlog, "github_request", fake_gh)
+    res = agent_backlog.reply_to_issue_comment(
+        issue_number=6,
+        body="Marked `agent:ready` for execution!",
+        new_status="ready",
+        repo="example/repo",
+        token="tok",
+    )
+    assert res["replied_to_comment_id"] == 103
+    assert res["updated_issue"] is True
+    post_call = [c for c in posted_calls if c[0] == "POST"][0]
+    assert "<!-- auto-issue-reply:comment_id=103 -->" in post_call[2]["body"]
+
+
+def test_list_task_issues_proposed_excludes_Dual_labeled_ready(monkeypatch: pytest.MonkeyPatch) -> None:
+    raw_issues = [
+        {"number": 1, "title": "Still proposed", "labels": [{"name": "agent:proposed"}, {"name": "priority:p2"}]},
+        {
+            "number": 7,
+            "title": "Human added ready on GitHub",
+            "labels": [{"name": "agent:proposed"}, {"name": "agent:ready"}, {"name": "priority:p2"}],
+        },
+    ]
+    monkeypatch.setattr(agent_backlog, "_get_paginated_issues", lambda **kwargs: raw_issues)
+    proposed = agent_backlog.list_task_issues(status="proposed", repo="example/repo", token="tok")
+    assert [i["number"] for i in proposed] == [1]
+
+
