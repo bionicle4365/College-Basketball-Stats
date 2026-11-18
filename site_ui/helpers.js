@@ -1133,10 +1133,10 @@ function getGameQuadrant(oppRank, isHome, isNeutral) {
 
 function calculateScheduleQuadSummary(events, teamId, bpiMap) {
     const summary = {
-        1: { w: 0, l: 0, rem: 0, pct: null },
-        2: { w: 0, l: 0, rem: 0, pct: null },
-        3: { w: 0, l: 0, rem: 0, pct: null },
-        4: { w: 0, l: 0, rem: 0, pct: null }
+        1: { w: 0, l: 0, rem: 0, pct: null, games: [] },
+        2: { w: 0, l: 0, rem: 0, pct: null, games: [] },
+        3: { w: 0, l: 0, rem: 0, pct: null, games: [] },
+        4: { w: 0, l: 0, rem: 0, pct: null, games: [] }
     };
 
     if (!Array.isArray(events) || !bpiMap) return summary;
@@ -1156,9 +1156,18 @@ function calculateScheduleQuadSummary(events, teamId, bpiMap) {
         const qInfo = getGameQuadrant(oppBpi.rank, isHome, isNeutral);
         if (!qInfo) return;
 
+        const resolved = resolveScheduleGameStatus(event, event._liveSummary || null, teamId);
+        const completed = Boolean(game.status?.type?.state === 'post' || game.status?.type?.completed || resolved.completed);
+        const winner = completed ? Boolean(myTeam.winner ?? resolved.isWin) : false;
+        const myScore = extractCompetitorScore(myTeam) ?? resolved.myScore;
+        const oppScore = extractCompetitorScore(opponent) ?? resolved.oppScore;
+        const score = (myScore !== null && oppScore !== null && myScore !== '' && oppScore !== '')
+            ? `${myScore}-${oppScore}`
+            : '';
+
         const bucket = summary[qInfo.quad];
-        if (game.status?.type?.state === 'post' || game.status?.type?.completed) {
-            if (myTeam.winner) {
+        if (completed) {
+            if (winner) {
                 bucket.w++;
             } else {
                 bucket.l++;
@@ -1166,6 +1175,17 @@ function calculateScheduleQuadSummary(events, teamId, bpiMap) {
         } else {
             bucket.rem++;
         }
+
+        bucket.games.push({
+            id: String(game.id || event.id || ''),
+            opponentName: opponent.team?.shortDisplayName || opponent.team?.displayName || opponent.team?.name || 'Opponent',
+            locationLabel: qInfo.locationLabel,
+            oppRank: qInfo.oppRank,
+            completed,
+            winner,
+            score,
+            date: event.date || game.date || ''
+        });
     });
 
     [1, 2, 3, 4].forEach(q => {
